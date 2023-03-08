@@ -1,7 +1,7 @@
 from src.qutip_lab.qutip_class import SpinOperator, SpinHamiltonian, SteadyStateSolver
 import numpy as np
 import qutip
-from tqdm import tqdm,trange
+from tqdm import tqdm, trange
 from typing import Dict, List, Tuple, Union
 import matplotlib.pyplot as plt
 from qutip.solver import Options
@@ -13,15 +13,9 @@ parser.add_argument(
     "--file_name",
     type=str,
     help="name of the path where the simulation is saved",
-    default="data/simulation",
+    default="data/gaussian_driving/simulation",
 )
 
-parser.add_argument(
-    "--num_threads",
-    type=int,
-    help="the number of threads for pytorch (default=3)",
-    default=3,
-)
 
 parser.add_argument(
     "--seed",
@@ -32,7 +26,7 @@ parser.add_argument(
 
 
 parser.add_argument(
-    "--c_max",
+    "--c",
     type=float,
     help="maximum amplitude of the random gaussian driving",
     default=4.0,
@@ -40,10 +34,10 @@ parser.add_argument(
 
 
 parser.add_argument(
-    "--sigma_max",
+    "--sigma",
     type=float,
-    help="maximum value of the ",
-    default=3.0,
+    help="maximum value of the sigma in the gaussian noise (default=9)",
+    default=9.0,
 )
 
 
@@ -93,12 +87,6 @@ parser.add_argument(
 
 
 parser.add_argument(
-    "--batch",
-    type=int,
-    help="batch size",
-    default=100,
-)
-parser.add_argument(
     "--n_dataset",
     type=int,
     help="number of samples of the dataset",
@@ -110,7 +98,14 @@ parser.add_argument(
     "--different_gaussians",
     type=int,
     help="number of samples of the dataset",
-    default=10000,
+    default=100,
+)
+
+parser.add_argument(
+    "--checkpoint",
+    type=int,
+    help="number of time step before a checkpoint (default=100)",
+    default=100,
 )
 
 args = parser.parse_args()
@@ -126,12 +121,13 @@ class Driving:
         self.hs = hs
         self.dt = dt
         self.i = i
-        
-    def __get_instance(self,sample:int):
-        self.h=hs[sample]
+        self.h = None
+
+    def get_instance(self, sample: int):
+        self.h = hs[sample]
 
     def field(self, t: float, args) -> Union[np.ndarray, float]:
-        return self.h[int(t / self.dt), self.i]
+        return self.h[int(t / self.dt) - 1, self.i]
 
 
 # size of the system
@@ -141,7 +137,7 @@ size: int = args.size
 pbc: bool = True
 
 # coupling term
-j: float = args.j0
+j: float = args.ji
 
 # time interval
 t_resolution: int = int(args.tf / args.dt)
@@ -149,25 +145,36 @@ t: np.ndarray = np.linspace(0, args.tf, t_resolution)
 
 
 # define the driving once for all
-c = np.random.uniform(0, args.c_max, size=args.different_gaussians)
-sigma = np.random.uniform(0.1, args.sigma_max, size=args.different_gaussians)
+c = np.random.uniform(0, args.c, size=args.different_gaussians)
+sigma = np.random.uniform(1, args.sigma, size=args.different_gaussians)
 
 n_dataset = args.n_dataset
-batch = args.batch
+
+
+file_name = (
+    args.file_name
+    + f"_size_{size}_tf_{args.tf}_dt_{args.dt}_sigma_1_{args.sigma}_c_0_{args.c}_noise_{args.different_gaussians}_n_dataset_{n_dataset}"
+)
+
+# return
+z = np.zeros((n_dataset, t_resolution, size))
+
 
 corr = c[:, None, None] * np.exp(
-    -(0.5 * ( (t[None, :, None] - t[None, None, :]) / sigma[:, None, None]) ** 2)
+    -(0.5 * ((t[None, :, None] - t[None, None, :]) / sigma[:, None, None]) ** 2)
 )
 lambd, q = np.linalg.eigh(corr)
-x = np.random.normal(size=(int(n_dataset / args.different_gaussians), t_resolution, size))
+x = np.random.normal(
+    size=(int(n_dataset / args.different_gaussians), t_resolution, size)
+)
 x = np.einsum("st,ati->sati", np.sqrt(np.abs(lambd)), x)
 hs = np.einsum("sty,sayi->sati", q, x)
 hs = hs.reshape(-1, t_resolution, size)
 
-driving_fields=[]
+driving_fields = []
 for i in range(size):
-    gaussian_driving=Driving(hs=hs,dt=args.dt,i)
-    driving_fields.append(gaussian_driving.field)
+    gaussian_driving = Driving(hs=hs, dt=args.dt, i=i)
+    driving_fields.append(gaussian_driving)
 
 
 # define the time independent hamiltonian
@@ -178,52 +185,30 @@ print(ham0)
 
 # define the initial exp value
 _, psi0 = np.linalg.eigh(ham0.qutip_op)
+psi0 = psi0[:, 0]
 psi0 = qutip.Qobj(psi0, shape=psi0.shape, dims=([[2 for i in range(size)], [1]]))
+
+obs: List[qutip.Qobj] = []
+for i in range(size):
+    x = SpinOperator(index=[("x", i)], coupling=[1.0], size=size, verbose=1)
+    obs.append(x.qutip_op)
+    z[:, 0, i] = x.expect_value(psi0)
 
 
 for sample in trange(n_dataset):
-    #define the instance
-    gaussian_driving.__get_instance(sample)
+    # define the instance
     ham = [ham0.qutip_op]
-    obs:List[qutip.Qobj]=[]
-    
-    
-    
+
+    # define the time dependent part
     for i in range(size):
-        x = SpinOperator(index=[("x", i)], coupling=[1.0], size=size, verbose=0)
-        print(x)
-        obs.append(x)
-        ham.append([x.qutip_op, driving_fields[i]])
-        
-    # initialize the external field
-    
+        driving_fields[i].get_instance(sample)
+        ham.append([obs[i], driving_fields[i].field])
 
-    
+    output = qutip.mesolve(ham, psi0, t[1:], e_ops=obs)
+    z[sample, 1:, :] = np.asarray(output.expect).reshape(-1, size)
 
-
-# compute the gaussian random driving
-
-
-hs = hs.reshape(-1, t_resolution, l)
-
-
-# observables
-obs: List[qutip.Qobj] = []
-# zz=SpinOperator(index=[('z',int(size/2),'z',int(size/2)+1)],coupling=[1.],size=size)
-# obs.append(zz.qutip_op)
-
-
-
-
-
-
-
-
-
-
-
-psi0 = psi0[:, 0]
-
+    if sample % args.checkpoint == 0:
+        np.savez(file_name, density=z, potential=hs, time=t)
 
 
 for r in np.isnan(psi0):
@@ -232,17 +217,8 @@ for r in np.isnan(psi0):
 
 x_gs = []
 
-for i in range(size):
-    x = SpinOperator(index=[("x", i)], coupling=[1.0], size=size, verbose=1)
-    print(x)
-    obs.append(x.qutip_op)
-    x_gs.append(x.expect_value(psi))
 
 plt.plot(x_gs)
 
 
 # options = Options(num_cpus=4, atol=1e-20)
-
-output = qutip.mcsolve(ham, psi, t, e_ops=obs)
-
-z = output.expect[i]
