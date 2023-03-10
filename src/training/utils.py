@@ -28,7 +28,7 @@ def make_data_loader_unet(
     bs: int,
     keys: Tuple,
     time_interval: int,
-    pixel: bool,
+    preprocessing: bool,
 ) -> tuple:
     """
     This function create a data loader from a .npz file
@@ -44,23 +44,31 @@ def make_data_loader_unet(
 
     data = np.load(file_name)
     # in this way we generalize this vector-vector function
-    k1 = pt.tensor(data[keys[0]])[:, 2:, :]  # they start from 2
+    k1 = pt.tensor(data[keys[0]])
     k2 = pt.tensor(data[keys[1]])
+
+    p = np.random.permutation(np.arange(k1.shape[0]))
+    k1 = k1[p]
+    k2 = k2[p]
     n_train = int(k1.shape[0] * split)
-    if pixel:
-        x = pt.cat((k1.unsqueeze(1), k2.unsqueeze(1)), dim=1)
-        y = k2.squeeze()
+    if preprocessing:
+        x = k1
+        maxh = pt.max(pt.abs(x), dim=-1)
+        maxh = pt.max(maxh.values, dim=-1)
+        norm = maxh.values
+        x = x / norm[:, None, None]
+        y = k2
+
         train_ds = TensorDataset(
-            x[0:n_train, :, :time_interval],
+            x[0:n_train, :time_interval],
             y[0:n_train, :time_interval],
         )
         train_dl = DataLoader(train_ds, bs, shuffle=True)
         valid_ds = TensorDataset(
-            x[n_train:, :, :time_interval],
+            x[n_train:, :time_interval],
             y[n_train:, :time_interval],
         )
         valid_dl = DataLoader(valid_ds, 2 * bs, shuffle=True)
-
     else:
         x = k1
         y = k2

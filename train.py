@@ -6,7 +6,7 @@ import numpy as np
 import torch as pt
 import torch.nn as nn
 
-from src.training.models import TDDFTCNN, TDDFTCNNNoMemory
+from src.training.models import TDDFTCNN, TDDFTCNNNoMemory, Causal_REDENT2D
 from src.training.train_module import fit
 from src.training.utils import (
     count_parameters,
@@ -28,6 +28,12 @@ parser.add_argument(
     action=argparse.BooleanOptionalAction,
 )
 
+parser.add_argument(
+    "--preprocessing",
+    type=bool,
+    help="use the preprocessing action in the driving",
+    action=argparse.BooleanOptionalAction,
+)
 
 parser.add_argument("--name", type=str, help="name of the model", default=None)
 
@@ -287,13 +293,30 @@ def main(args):
             model = TDDFTCNNNoMemory(
                 Loss=nn.MSELoss(),
                 in_channels=input_channels,
-                Activation=nn.ReLU(),
+                Activation=nn.GELU(),
                 hidden_channels=hc,
                 ks=kernel_size,
                 padding_mode=padding_mode,
                 out_features=input_size,
                 in_features=input_size,
                 out_channels=input_channels,
+            )
+        elif args.model_type == "CausalUnet":
+            pixel = False
+            model = Causal_REDENT2D(
+                Loss=nn.MSELoss(),
+                in_channels=input_channels,
+                Activation=nn.ReLU(),
+                hidden_channels=hc,
+                ks=kernel_size,
+                padding=[(kernel_size[0] - 1) // 2, (kernel_size[1] - 1) // 2],
+                padding_mode=padding_mode,
+                # pooling_size=pooling_size,
+                n_conv_layers=n_conv_layers,
+                out_features=input_size,
+                in_features=input_size,
+                out_channels=input_channels,
+                n_block_layers=args.n_block_layers,
             )
 
     model = model.to(pt.double)
@@ -313,7 +336,7 @@ def main(args):
             split=0.8,
             keys=args.keys,
             time_interval=time_interval,
-            pixel=pixel,
+            preprocessing=args.preprocessing,
         )
         train_dls.append(train_dl)
         valid_dls.append(valid_dl)

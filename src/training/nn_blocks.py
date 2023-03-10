@@ -12,7 +12,7 @@ class MaskedConv2d(nn.Conv2d):
 
         _, _, kh, kw = self.weight.shape
         self.register_buffer("mask", torch.ones([kh, kw]))
-        self.mask[kh // 2, kw // 2 + 1 :] = 0
+        # self.mask[kh // 2, kw // 2 + 1 :] = 0
         # type_mask=A excludes the central pixel
         if self.mask_type == "A":
             self.mask[kh // 2, kw // 2] = 0
@@ -41,13 +41,49 @@ class MaskedConv2d(nn.Conv2d):
         ).extra_repr() + ", mask_type={mask_type}".format(**self.__dict__)
 
 
-class CausalMaskedConv2d(MaskedConv2d):
+class MaskedTConv2d(nn.Conv2d):
+    def __init__(self, *args, **kwargs) -> None:
+        # remove mask_type kwargs
+        self.mask_type = kwargs.pop("mask_type")
+        super(MaskedTConv2d, self).__init__(*args, **kwargs)
+
+        _, _, kh, kw = self.weight.shape
+        self.register_buffer("mask", torch.ones([kh, kw]))
+        # self.mask[kh // 2, kw // 2 + 1 :] = 0
+        # type_mask=A excludes the central pixel
+        if self.mask_type == "A":
+            self.mask[kh // 2, kw // 2] = 0
+        self.mask[kh // 2 + 1 :] = 0
+        self.weight.data *= self.mask
+
+        print(self.mask)
+
+        # Correction to Xavier initialization
+        self.weight.data *= torch.sqrt(self.mask.numel() / self.mask.sum())
+
+    def forward(self, x):
+        return F.conv_transpose2d(
+            x,
+            weight=self.mask * self.weight,
+            bias=self.bias,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            output_padding=0,
+        )
+
+    def extra_repr(self):
+        return super(
+            MaskedTConv2d, self
+        ).extra_repr() + ", mask_type={mask_type}".format(**self.__dict__)
+
+
+class CausalConv2d(nn.Conv2d):
     def __init__(
         self,
         in_channels,
         out_channels,
         kernel_size,
-        mask_type: str,
         stride=1,
         padding=None,
         padding_mode="zeros",
@@ -77,7 +113,6 @@ class CausalMaskedConv2d(MaskedConv2d):
             dilation=dilation,
             groups=groups,
             bias=bias,
-            mask_type=mask_type,
         )
 
     def forward(self, inputs):
@@ -92,81 +127,6 @@ class CausalMaskedConv2d(MaskedConv2d):
         # print(inputs.shape)
         output = super().forward(inputs)
         return output
-
-
-class ConvLSTM(nn.Module):
-    def __init__(
-        self, in_channels: int, out_channels: int, kernel_size: int, padding: int
-    ) -> None:
-        super().__init__()
-
-        self.conv_f = nn.Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="zeros",
-        )
-
-        self.conv_i = nn.Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="zeros",
-        )
-
-        self.conv_o = nn.Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="zeros",
-        )
-
-        self.conv_c = nn.Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="zeros",
-        )
-
-        self.f_v = nn.Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="zeros",
-        )
-        self.i_v = nn.Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="zeros",
-        )
-
-        self.o_v = nn.Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="zeros",
-        )
-
-        self.c_v = nn.Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="zeros",
-        )
-
-    def forward(
-        self,
-    ):
-        return None
 
 
 class ConvBlock(nn.Module):
@@ -234,4 +194,5 @@ class ConvBlock(nn.Module):
 
     def forward(self, x: torch.Tensor):
         x = self.block(x)
+        # x = torch.cos(x)  # values between -1 and 1
         return x
