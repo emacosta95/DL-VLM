@@ -110,6 +110,22 @@ parser.add_argument(
     default=100,
 )
 
+parser.add_argument(
+    "--noise_type",
+    type=str,
+    help="type of noise that can be either 'gaussian' or 'uniform' (default=gaussian)",
+    default="gaussian",
+)
+
+
+parser.add_argument(
+    "--hmax",
+    type=float,
+    help="magnitude of the disorder (default=1.0)",
+    default=1.0,
+)
+
+
 args = parser.parse_args()
 
 
@@ -137,6 +153,25 @@ class Driving:
         return self.h[int(t / self.dt) - 1]
 
 
+class DrivingUniform:
+    def __init__(
+        self,
+        t_resolution: int,
+        dt: float,
+        hmax: float,
+    ) -> None:
+        self.t_resolution = t_resolution
+        self.dt = dt
+        self.i = i
+
+        self.h = None
+        noise = np.random.uniform(0.0, hmax, size=t_resolution)
+        self.h = noise
+
+    def field(self, t: float, args) -> Union[np.ndarray, float]:
+        return self.h[int(t / self.dt) - 1]
+
+
 # size of the system
 size: int = args.size
 
@@ -154,8 +189,11 @@ t: np.ndarray = np.linspace(0, args.tf, t_resolution)
 
 
 # define the driving once for all
-c = np.random.uniform(0, args.c, size=args.different_gaussians)
-sigma = np.random.randint(10, args.sigma, size=args.different_gaussians)
+if args.noise_type == "gaussian":
+    c = np.random.uniform(0, args.c, size=args.different_gaussians)
+    sigma = np.random.randint(10, args.sigma, size=args.different_gaussians)
+else:
+    hmax = args.hmax
 
 n_dataset = args.n_dataset
 
@@ -206,19 +244,27 @@ for sample in trange(n_dataset):
 
     # define the time dependent part
     for i in range(size):
-        driving = Driving(
-            t_resolution=t_resolution,
-            dt=args.dt,
-            sigma=sigma[sample % args.different_gaussians],
-            c=c[sample % args.different_gaussians],
-        )
+        if args.noise_type == "gaussian":
+            driving = Driving(
+                t_resolution=t_resolution,
+                dt=args.dt,
+                sigma=sigma[sample % args.different_gaussians],
+                c=c[sample % args.different_gaussians],
+            )
+        else:
+            driving = DrivingUniform(
+                t_resolution=t_resolution,
+                dt=args.dt,
+                hmax=hmax,
+            )
+
         hs[sample, :, i] = driving.h
         ham.append([obs[i], driving.field])
     # print("obs=", obs)
-    output = qutip.sesolve(ham, psi0, t[1:], e_ops=obs)
+    output = qutip.sesolve(ham, psi0, t, e_ops=obs)
     # this is a shame
     for i in range(size):
-        z[sample, 1:, i] = output.expect[i]
+        z[sample, :, i] = output.expect[i]
 
     if sample % args.checkpoint == 0:
         np.savez(file_name, density=z, potential=hs, time=t)

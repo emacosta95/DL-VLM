@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 # )
 
 data = np.load(
-    "data/gaussian_driving/simulation_size_6_tf_10.0_dt_0.05_sigma_10_40_c_0_4.0_noise_1_n_dataset_15000.npz"
+    "data/gaussian_driving/simulation_size_6_tf_10.0_dt_0.05_sigma_10_40_c_0_4.0_noise_100_n_dataset_15000.npz"
 )
 
 z = torch.tensor(data["density"][:, :128], dtype=torch.double)
@@ -21,7 +21,7 @@ t = data["time"][:128]
 
 
 model = torch.load(
-    "model_rep/unet_gaussian_one_noise_driving_sigma_10_40_t_005_l_6_nt_64_15k_pbc_[40, 40, 40, 40]_hc_[5, 3]_ks_1_ps_4_nconv_0_nblock",
+    "model_rep/unet_gaussian_driving_sigma_10_20_t_005_l_6_nt_32_15k_pbc_[40, 80, 160]_hc_[5, 3]_ks_1_ps_3_nconv_0_nblock",
     map_location="cpu",
 )
 model.to(dtype=torch.double)

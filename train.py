@@ -13,6 +13,7 @@ from src.training.utils import (
     get_optimizer,
     make_data_loader_unet,
 )
+from src.tddft_methods.adiabatic_tddft import AdiabaticTDDFTNN
 
 # %%
 
@@ -43,7 +44,7 @@ parser.add_argument(
     nargs="+",
     help="list of data path (default=data/unet_dataset/train_unet_periodic_16_l_3.6_h_150000_n.npz)",
     default=[
-        "data/gaussian_driving/l_5_tf_10.0_dt_0.1_gaussians_1000_n_dataset_15000.npz"
+        "data/gaussian_driving/train_size_6_tf_10.0_dt_0.05_sigma_10_40_c_0_4.0_noise_100_n_dataset_15000.npz"
     ],
 )
 
@@ -107,7 +108,7 @@ parser.add_argument(
 
 
 parser.add_argument(
-    "--input_channels", type=int, help="# input channels (default=2)", default=2
+    "--input_channels", type=int, help="# input channels (default=1)", default=1
 )
 parser.add_argument(
     "--input_size",
@@ -121,8 +122,8 @@ parser.add_argument(
     "--hidden_channels",
     type=int,
     nargs="+",
-    help="list of hidden channels (default=[40,40,40,40])",
-    default=[40 for i in range(4)],
+    help="list of hidden channels (default=[10,10])",
+    default=[10 for i in range(2)],
 )
 
 parser.add_argument(
@@ -175,7 +176,7 @@ parser.add_argument(
     "--model_type",
     type=str,
     help="could be either REDENT or Den2Cor",
-    default="TDDFTRecurrent",
+    default="AdiabaticTDDDFT",
 )
 
 parser.add_argument(
@@ -190,7 +191,7 @@ parser.add_argument(
     "--time_interval",
     type=int,
     help="the number of time step of the training data",
-    default=98,
+    default=10,
 )
 
 
@@ -306,7 +307,7 @@ def main(args):
             model = Causal_REDENT2D(
                 Loss=nn.MSELoss(),
                 in_channels=input_channels,
-                Activation=nn.ReLU(),
+                Activation=nn.GELU(),
                 hidden_channels=hc,
                 ks=kernel_size,
                 padding=[(kernel_size[0] - 1) // 2, (kernel_size[1] - 1) // 2],
