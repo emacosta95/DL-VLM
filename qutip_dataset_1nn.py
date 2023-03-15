@@ -125,6 +125,20 @@ parser.add_argument(
     default=1.0,
 )
 
+parser.add_argument(
+    "--a",
+    type=float,
+    help="magnitude of the disorder (default=1.0)",
+    default=1.0,
+)
+
+
+parser.add_argument(
+    "--omega",
+    type=float,
+    help="magnitude of the disorder (default=1.0)",
+    default=1.0,
+)
 
 args = parser.parse_args()
 
@@ -172,11 +186,35 @@ class DrivingUniform:
         return self.h[int(t / self.dt) - 1]
 
 
+class DrivingPeriodic:
+    def __init__(
+        self,
+        t_resolution: int,
+        dt: float,
+        a: float,
+        omega: float,
+    ) -> None:
+        self.t_resolution = t_resolution
+        self.dt = dt
+        self.i = i
+
+        self.h = None
+        a_i = np.random.uniform(0, a, size=4)
+        omega_i = np.random.uniform(0, omega, size=4)
+        t = np.linspace(0, dt * t_resolution, t_resolution)
+        h_i = a_i[:, None] * np.sin(omega_i[:, None] * t[None, :])
+        self.h = np.average(h_i, axis=0)
+
+    def field(self, t: float, args) -> Union[np.ndarray, float]:
+        return self.h[int(t / self.dt) - 1]
+
+
 # size of the system
 size: int = args.size
 
 # periodic boundary conditions
 pbc: bool = True
+
 
 np.random.seed(args.seed)
 
@@ -251,11 +289,16 @@ for sample in trange(n_dataset):
                 sigma=sigma[sample % args.different_gaussians],
                 c=c[sample % args.different_gaussians],
             )
-        else:
+        elif args.noise_type == "uniform":
             driving = DrivingUniform(
                 t_resolution=t_resolution,
                 dt=args.dt,
                 hmax=hmax,
+            )
+
+        else:
+            driving = DrivingPeriodic(
+                t_resolution=t_resolution, dt=args.dt, a=args.a, omega=args.omega
             )
 
         hs[sample, :, i] = driving.h

@@ -1,7 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 import torch.nn as nn
-from src.training.nn_blocks import ConvBlock1D
+from src.training.conv_block_model import ConvBlock1D
 import numpy as np
 from typing import Tuple
 

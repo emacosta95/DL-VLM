@@ -4,9 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple
-from src.training.nn_blocks import CausalConv2d
-
-from torch.utils.data import Dataset, TensorDataset, DataLoader
 
 
 class REDENTnopooling(nn.Module):
@@ -190,7 +187,7 @@ class REDENTnopooling(nn.Module):
                             out_channels=hidden_channels[n_conv_layers - 1 - (i + 1)],
                             kernel_size=ks,
                             padding=padding,
-                            padding_mode="circular",
+                            padding_mode=padding_mode,
                         ),
                     )
                     # block.add_module(
@@ -302,7 +299,7 @@ class REDENTnopooling(nn.Module):
                         nn.Conv1d(
                             stride=1,
                             in_channels=hidden_channels[n_conv_layers - 1 - (i)],
-                            out_channels=self.out_channels,
+                            out_channels=self.in_channels,
                             kernel_size=ks,
                             padding=padding,
                             padding_mode="zeros",
@@ -313,42 +310,26 @@ class REDENTnopooling(nn.Module):
                     self.conv_upsample.append(block)
 
     def forward(self, x: torch.tensor) -> torch.tensor:
-        x = torch.unsqueeze(x, dim=1)
         outputs = []
         for block in self.conv_downsample:
+            # print(x.shape)
             x = block(x)
             outputs.append(x)
         for i, block in enumerate(self.conv_upsample):
+            # print(x.shape)
             if i == 0:
                 x = block(x)
             else:
                 x = x + outputs[self.n_conv_layers - 1 - i]
                 x = block(x)
-        x = torch.squeeze(x)
         # x = torch.sigmoid(x)  # we want to prove the Cross Entropy
         return x
-
-    def functional(self, x: torch.tensor):
-        x = torch.unsqueeze(x, dim=1)
-        outputs = []
-        for block in self.conv_downsample:
-            x = block(x)
-            outputs.append(x)
-        for i, block in enumerate(self.conv_upsample):
-            if i == 0:
-                x = block(x)
-            else:
-                x = x + outputs[self.n_conv_layers - 1 - i]
-                x = block(x)
-        x = torch.squeeze(x)
-        # x = torch.sigmoid(x)  # we want to prove the Cross Entropy
-        return x.mean(-1)
 
     def train_step(self, batch: Tuple, device: str):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)
-        x = self.forward(x).squeeze()
+        x = self.forward(x)
         loss = self.loss(x, y)
         return loss
 

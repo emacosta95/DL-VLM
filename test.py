@@ -1,6 +1,3 @@
-# %%
-
-
 #%%
 import torch
 import numpy as np
@@ -8,20 +5,20 @@ import matplotlib.pyplot as plt
 
 
 # data = np.load(
-#     "data/gaussian_driving/l_5_tf_10.0_dt_0.1_gaussians_1000_n_dataset_15000.npz"
+#     "data/gaussian_driving/train_size_6_tf_10.0_dt_0.05_sigma_10_20_c_0_2.0_noise_100_n_dataset_15000.npz"
 # )
 
 data = np.load(
-    "data/gaussian_driving/simulation_size_6_tf_10.0_dt_0.05_sigma_10_40_c_0_4.0_noise_100_n_dataset_15000.npz"
+    "data/periodic/train_size_6_tf_10.0_dt_0.1_a_0_1_omega_0_4_n_dataset_15000.npz"
 )
 
-z = torch.tensor(data["density"][:, :128], dtype=torch.double)
-h = torch.tensor(data["potential"][:, :128], dtype=torch.double)
-t = data["time"][:128]
+z = torch.tensor(data["density"][:, :96], dtype=torch.double)
+h = torch.tensor(data["potential"][:, :96], dtype=torch.double)
+t = data["time"][:96]
 
 
 model = torch.load(
-    "model_rep/unet_gaussian_driving_sigma_10_20_t_005_l_6_nt_32_15k_pbc_[40, 80, 160]_hc_[5, 3]_ks_1_ps_3_nconv_0_nblock",
+    "model_rep/causalcnn_periodic_omega_4_amplitude_1_t_01_l_6_nt_48_15k_pbc_[40, 40, 40, 40]_hc_[11, 3]_ks_1_ps_4_nconv_0_nblock",
     map_location="cpu",
 )
 model.to(dtype=torch.double)
@@ -35,7 +32,7 @@ for k in [-5, -4, -3, -2, -1]:
     for i in range(5):
         plt.plot(t, z_new.detach().numpy()[k, :, i])
         plt.plot(t, z.detach().numpy()[k, :, i])
-        # plt.plot(t, h.detach().numpy()[k, :, i], color="black", linestyle="--")
+        plt.plot(t, h.detach().numpy()[k, :, i], color="black", linestyle="--")
         plt.show()
 
 

@@ -52,21 +52,17 @@ def make_data_loader_unet(
     k2 = k2[p]
     n_train = int(k1.shape[0] * split)
     if preprocessing:
-        x = k1
-        maxh = pt.max(pt.abs(x), dim=-1)
-        maxh = pt.max(maxh.values, dim=-1)
-        norm = maxh.values
-        x = x / norm[:, None, None]
-        y = k2
+        x = k1.view(k1.shape[0], k1.shape[-1], k1.shape[1])
+        y = k2.view(k2.shape[0], k2.shape[-1], k2.shape[1])
 
         train_ds = TensorDataset(
-            x[0:n_train, :time_interval],
-            y[0:n_train, :time_interval],
+            x[0:n_train, :, :time_interval],
+            y[0:n_train, :, :time_interval],
         )
         train_dl = DataLoader(train_ds, bs, shuffle=True)
         valid_ds = TensorDataset(
-            x[n_train:, :time_interval],
-            y[n_train:, :time_interval],
+            x[n_train:,:, :time_interval],
+            y[n_train:, :, :time_interval],
         )
         valid_dl = DataLoader(valid_ds, 2 * bs, shuffle=True)
     else:

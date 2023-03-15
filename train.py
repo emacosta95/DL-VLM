@@ -6,14 +6,16 @@ import numpy as np
 import torch as pt
 import torch.nn as nn
 
-from src.training.models import TDDFTCNN, TDDFTCNNNoMemory, Causal_REDENT2D
+from src.training.models import TDDFTCNNNoMemory, Causal_REDENT2D
+from src.training.model_unet import REDENTnopooling
 from src.training.train_module import fit
+from src.training.model_lstmcnn import CNNLSTM
 from src.training.utils import (
     count_parameters,
     get_optimizer,
     make_data_loader_unet,
 )
-from src.tddft_methods.adiabatic_tddft import AdiabaticTDDFTNN
+
 
 # %%
 
@@ -44,7 +46,7 @@ parser.add_argument(
     nargs="+",
     help="list of data path (default=data/unet_dataset/train_unet_periodic_16_l_3.6_h_150000_n.npz)",
     default=[
-        "data/gaussian_driving/train_size_6_tf_10.0_dt_0.05_sigma_10_40_c_0_4.0_noise_100_n_dataset_15000.npz"
+        "data/gaussian_driving/train_size_6_tf_10.0_dt_0.05_sigma_10_20_c_0_2.0_noise_100_n_dataset_15000.npz"
     ],
 )
 
@@ -139,6 +141,21 @@ parser.add_argument(
     type=int,
     help="pooling size in the Avg Pooling (default=1)",
     default=1,
+)
+
+parser.add_argument(
+    "--n_layers",
+    type=int,
+    help="number of layers in the econder/decoder latent dimension structure (default=1)",
+    default=1,
+)
+
+
+parser.add_argument(
+    "--latent_dimension",
+    type=int,
+    help="latent dimension of the CONV DECONV autoencoder (default=2)",
+    default=2,
 )
 
 parser.add_argument(
@@ -276,20 +293,22 @@ def main(args):
             #     n_conv_layers=n_conv_layers,
             # )
 
-        elif args.model_type == "TDDFTCNN":
-            pixel = True
-            model = TDDFTCNN(
-                Loss=nn.MSELoss(),
+        elif args.model_type == "LSTM":
+            pixel = False
+            model = CNNLSTM(
+                n_conv=len(hc),
+                activation=nn.ReLU(),
+                hidden_neurons=hc[0],
+                kernel_size=kernel_size[0],
                 in_channels=input_channels,
-                Activation=nn.ReLU(),
+                latent_dimension=args.latent_dimension,
+                n_layers=args.n_layers,
+                pooling_size=args.pooling_size,
                 hidden_channels=hc,
-                ks=kernel_size,
                 padding_mode=padding_mode,
-                out_features=input_size,
-                in_features=input_size,
-                out_channels=input_channels,
+                loss=nn.MSELoss(),
             )
-        elif args.model_type == "TDDFTCNNNoMemory":
+        elif args.model_type == "TDDFTCNN":
             pixel = False
             model = TDDFTCNNNoMemory(
                 Loss=nn.MSELoss(),
@@ -301,6 +320,7 @@ def main(args):
                 out_features=input_size,
                 in_features=input_size,
                 out_channels=input_channels,
+                t_interval_range=time_interval,
             )
         elif args.model_type == "CausalUnet":
             pixel = False
@@ -320,6 +340,22 @@ def main(args):
                 n_block_layers=args.n_block_layers,
             )
 
+        elif args.model_type == "ChannelUNET":
+            model = REDENTnopooling(
+                Loss=nn.MSELoss(),
+                in_channels=args.input_channels,
+                Activation=nn.GELU(),
+                hidden_channels=hc,
+                ks=kernel_size,
+                padding=(kernel_size[0] - 1) // 2,
+                padding_mode=padding_mode,
+                n_conv_layers=n_conv_layers,
+                out_features=input_size,
+                in_features=input_size,
+                out_channels=args.input_channels,
+                n_block_layers=args.n_block_layers,
+            )
+
     model = model.to(pt.double)
     model = model.to(device=device)
 
@@ -336,7 +372,7 @@ def main(args):
             bs=bs,
             split=0.8,
             keys=args.keys,
-            time_interval=time_interval,
+            time_interval=300,
             preprocessing=args.preprocessing,
         )
         train_dls.append(train_dl)

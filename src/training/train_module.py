@@ -95,7 +95,7 @@ def fit(
 
             for batch in valid_dl:
                 if supervised:
-                    loss = model.train_step(batch, device)
+                    loss = model.valid_step(batch, device)
                     loss_ave_valid += loss.item()
                 else:
                     loss, kldiv = model.train_generative_step(batch, device)
