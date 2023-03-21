@@ -6,7 +6,7 @@ import numpy as np
 import torch as pt
 import torch.nn as nn
 
-from src.training.models import TDDFTCNNNoMemory, Causal_REDENT2D
+from src.training.models import TDDFTCNNNoMemory, Causal_REDENT2D, LSTMTDDFT
 from src.training.model_unet import REDENTnopooling
 from src.training.train_module import fit
 from src.training.model_lstmcnn import CNNLSTM
@@ -295,17 +295,11 @@ def main(args):
 
         elif args.model_type == "LSTM":
             pixel = False
-            model = CNNLSTM(
-                n_conv=len(hc),
-                activation=nn.ReLU(),
-                hidden_neurons=hc[0],
-                kernel_size=kernel_size[0],
-                in_channels=input_channels,
-                latent_dimension=args.latent_dimension,
-                n_layers=args.n_layers,
-                pooling_size=args.pooling_size,
-                hidden_channels=hc,
-                padding_mode=padding_mode,
+            model = LSTMTDDFT(
+                input_size=input_size,
+                hidden_size=hc[0],
+                num_layers=args.n_layers,
+                dropout=0.2,
                 loss=nn.MSELoss(),
             )
         elif args.model_type == "TDDFTCNN":

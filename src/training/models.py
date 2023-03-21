@@ -6,13 +6,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 from typing import Tuple
-from src.training.conv_block_model import (
-    ConvBlock,
-)
+from src.training.conv_block_model import ConvBlock
+
 from src.training.model_utils.cnn_causal_blocks import (
     CausalConv2d,
-    MaskedConv2d,
-    MaskedTConv2d,
 )
 from tqdm import trange
 import matplotlib.pyplot as plt
@@ -90,7 +87,6 @@ class TDDFTCNNNoMemory(nn.Module):
         t_int = np.random.randint(self.kernel_size + 1, self.t_interval_range, size=1)[
             0
         ]
-        print(t_int)
         x = x.to(device=device, dtype=torch.double)
         x = x[:, :t_int]
         y = y.to(device=device, dtype=torch.double)
@@ -105,11 +101,11 @@ class TDDFTCNNNoMemory(nn.Module):
         loss = 0
         x, y = batch
 
-        t_int = np.random.randint(5, self.t_interval_range, size=1)[0]
+        # t_int = np.random.randint(5, self.t_interval_range, size=1)[0]
         x = x.to(device=device, dtype=torch.double)
-        x = x[:, :t_int]
+        # x = x[:, :t_int]
         y = y.to(device=device, dtype=torch.double)
-        y = y[:, :t_int]
+        # y = y[:, :t_int]
         x = self.forward(x)
         x = x.squeeze()
         y = y.squeeze()
@@ -120,8 +116,8 @@ class TDDFTCNNNoMemory(nn.Module):
         loss = 0
         x, y = batch
 
-        x = x.to(device=device, dtype=torch.double)
-        y = y.to(device=device, dtype=torch.double)
+        x = x.to(device=device, dtype=torch.double)[:, : self.t_interval_range]
+        y = y.to(device=device, dtype=torch.double)[:, : self.t_interval_range]
         x = self.forward(x)
         x = x.squeeze()
         y = y.squeeze()
@@ -497,6 +493,14 @@ class Causal_REDENT2D(nn.Module):
         return x
 
     def train_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x).squeeze()
+        loss = self.loss(x, y)
+        return loss
+
+    def predict_step(self, batch: Tuple, device: str):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)
@@ -966,3 +970,41 @@ class REDENTnopooling(nn.Module):
 
 
 # %%
+class LSTMTDDFT(nn.Module):
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int,
+        num_layers: int,
+        dropout: float,
+        loss: nn.Module,
+    ) -> None:
+        super().__init__()
+        self.model = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+            proj_size=1,
+        )
+
+        self.loss = loss
+
+    def forward(self, x: torch.Tensor):
+        return self.model(x)
+
+    def train_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x, _ = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+
+    def valid_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x, _ = self.forward(x)
+        loss = self.loss(x, y)
+        return loss

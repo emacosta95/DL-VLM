@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from torch.nn.modules.utils import _pair
-from src.training.model_utils.cnn_causal_blocks import MaskedConv2d, CausalConv2d
+from src.training.model_utils.cnn_causal_blocks import CausalConv2d
+from typing import List
 
 
 class ConvBlock(nn.Module):
@@ -10,7 +10,7 @@ class ConvBlock(nn.Module):
         self,
         n_conv: int,
         activation: nn.Module,
-        hc: int,
+        hc: List[int],
         in_channels: int,
         kernel_size: int,
         padding_mode: str,
@@ -19,41 +19,77 @@ class ConvBlock(nn.Module):
         super().__init__()
 
         self.block = nn.Sequential()
-        for i in range(n_conv):
+        self.block.add_module(
+            f"conv_sp {-1}",
+            nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=hc[0],
+                kernel_size=[1, kernel_size[1]],
+                padding_mode=padding_mode,
+                padding=[0, (kernel_size[1] - 1) // 2],
+            ),
+        )
+        self.block.add_module(
+            f"conv_t {-1}",
+            CausalConv2d(
+                in_channels=hc[0],
+                out_channels=hc[0],
+                kernel_size=[kernel_size[0], 1],
+            ),
+        )
 
-            if i == 0:
-                self.block.add_module(
-                    f"conv_{i}",
-                    CausalConv2d(
-                        in_channels=in_channels,
-                        out_channels=hc[i],
-                        kernel_size=kernel_size,
-                    ),
-                )
-            else:
-                self.block.add_module(
-                    f"conv_{i}",
-                    CausalConv2d(
-                        in_channels=hc[i - 1],
-                        out_channels=hc[i],
-                        kernel_size=kernel_size,
-                    ),
-                )
+        self.block.add_module(
+            f"batchnorm_{-1}",
+            nn.BatchNorm2d(hc[0]),
+        )
+        for i in range(n_conv - 1):
+
+            self.block.add_module(
+                f"conv_sp{i}",
+                nn.Conv2d(
+                    in_channels=hc[i - 1],
+                    out_channels=hc[i],
+                    kernel_size=[1, kernel_size[1]],
+                    padding_mode=padding_mode,
+                    padding=[0, (kernel_size[1] - 1) // 2],
+                ),
+            )
+            self.block.add_module(
+                f"conv_t{i}",
+                CausalConv2d(
+                    in_channels=hc[i],
+                    out_channels=hc[i],
+                    kernel_size=[kernel_size[0], 1],
+                ),
+            )
+
+            self.block.add_module(
+                f"batchnorm_{i}",
+                nn.BatchNorm2d(hc[i]),
+            )
             self.block.add_module(f"act_{i}", activation)
 
         self.block.add_module(
-            f"conv_{i+1}",
+            f"conv_sp{n_conv+1}",
+            nn.Conv2d(
+                in_channels=hc[i],
+                out_channels=hc[i],
+                kernel_size=[1, kernel_size[1]],
+                padding_mode=padding_mode,
+                padding=[0, (kernel_size[1] - 1) // 2],
+            ),
+        )
+        self.block.add_module(
+            f"conv_t{n_conv+1}",
             CausalConv2d(
                 in_channels=hc[i],
                 out_channels=out_channels,
-                kernel_size=kernel_size,
+                kernel_size=[kernel_size[0], 1],
             ),
         )
 
     def forward(self, x: torch.Tensor):
-        x = self.block(x)
-        # x = torch.cos(x)  # values between -1 and 1
-        return x
+        return self.block(x)
 
 
 class ConvBlock1D(nn.Module):

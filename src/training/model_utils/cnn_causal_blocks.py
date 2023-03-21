@@ -105,9 +105,9 @@ class CausalConv2d(nn.Conv2d):
         self.up_padding = padding[1]
         self.padding_mode = padding_mode
         super().__init__(
-            in_channels,
-            out_channels,
-            kernel_size,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
             stride=stride,
             padding=0,
             dilation=dilation,
