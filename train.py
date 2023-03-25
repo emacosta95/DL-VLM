@@ -10,6 +10,7 @@ from src.training.models import TDDFTCNNNoMemory, Causal_REDENT2D, LSTMTDDFT
 from src.training.model_unet import REDENTnopooling
 from src.training.train_module import fit
 from src.training.model_lstmcnn import CNNLSTM
+from src.training.seq2seq import Seq2Seq
 from src.training.utils import (
     count_parameters,
     get_optimizer,
@@ -293,13 +294,14 @@ def main(args):
             #     n_conv_layers=n_conv_layers,
             # )
 
-        elif args.model_type == "LSTM":
+        elif args.model_type == "Seq2Seq":
             pixel = False
-            model = LSTMTDDFT(
-                input_size=input_size,
-                hidden_size=hc[0],
-                num_layers=args.n_layers,
-                dropout=0.2,
+            model = Seq2Seq(
+                n_conv=len(hc),
+                out_channels=input_channels,
+                kernel_size=kernel_size,
+                hc=hc[0],
+                in_channel=input_channels,
                 loss=nn.MSELoss(),
             )
         elif args.model_type == "TDDFTCNN":
