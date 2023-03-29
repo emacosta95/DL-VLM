@@ -29,50 +29,62 @@ class Seq2Seq(nn.Module):
         )
 
         self.decoder = DecoderOperator(
-            out_channels=hc,
+            out_channels=out_channels,
             kernel_size=kernel_size,
             n_conv=n_conv,
             hc=hc,
             in_channels=in_channel,
         )
 
-        self.probability_head = ProbabilityHead(
-            in_channels=hc,
-            hidden_channels=hc,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            mask_type="B",
-        )
+        # self.probability_head = ProbabilityHead(
+        #     in_channels=hc,
+        #     hidden_channels=hc,
+        #     out_channels=out_channels,
+        #     kernel_size=kernel_size,
+        #     mask_type="B",
+        # )
 
         self.loss = loss
 
     def forward(self, x: torch.Tensor, y: torch.Tensor):
 
         e = self.encoder(x)
-        h = self.decoder(x=x, y=y, e=e)
-        mu, logsigma = self.probability_head(h)
+        y_tilde = self.decoder(x=x, y=y, e=e)
+        # mu, logsigma = self.probability_head(h)
 
-        return mu, logsigma
+        return y_tilde  # mu, logsigma
 
     def train_step(self, batch: Tuple, device: str):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
+        # create some noise to improve the universality
+        noise_mu = torch.zeros_like(x)
+        noise_sigma = 0.1 * torch.ones_like(x)
+        noise = torch.normal(noise_mu, noise_sigma)
         y = y.to(device=device, dtype=torch.double)
+        y_input = y + noise
         x = x.unsqueeze(1)
         y = y.unsqueeze(1)
-        mu, logsigma = self.forward(x=x, y=y)
-        y_tilde = self.probability_head.training_sample(mu, logsigma)
+        y_input = y_input.unsqueeze(1)
+        y_tilde = self.forward(x=x, y=y_input).squeeze(1)
+        # y_tilde = self.probability_head.training_sample(mu, logsigma)
         loss = self.loss(y_tilde, y.squeeze())
         return loss
 
     def valid_step(self, batch: Tuple, device: str):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
+        # create some noise to improve the universality
+        noise_mu = torch.zeros_like(x)
+        noise_sigma = 0.1 * torch.ones_like(x)
+        noise = torch.normal(noise_mu, noise_sigma)
         y = y.to(device=device, dtype=torch.double)
+        y_input = y + noise
         x = x.unsqueeze(1)
         y = y.unsqueeze(1)
-        mu, logsigma = self.forward(x=x, y=y)
-        y_tilde = self.probability_head.training_sample(mu, logsigma)
+        y_input = y_input.unsqueeze(1)
+        y_tilde = self.forward(x=x, y=y_input).squeeze()
+        # y_tilde = self.probability_head.training_sample(mu, logsigma)
         loss = self.loss(y_tilde, y.squeeze())
         return loss
 
@@ -82,10 +94,9 @@ class Seq2Seq(nn.Module):
         print(y.shape)
         for t in range(time_step_initial, x.shape[-2] - 1):
             for s in range(x.shape[-1]):
-                mu, logsigma = self.forward(x=x, y=y)
-                y_sample = self.probability_head.prediction_sample(mu, logsigma, s, t)
+                y_sample = self.forward(x=x, y=y)
                 y[:, 0, t, s] = y_sample
-                # y = (y[:, :, :, :] + torch.roll(y[:, :, :, :], shifts=1, dims=-2)) * 0.5
+
         y = y.squeeze()
         return y
 
