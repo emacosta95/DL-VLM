@@ -139,7 +139,7 @@ for i in range(1):
         plt.show()
 # %%
 
-time_step_initial = 30
+time_step_initial = 20
 idx = 0
 k = 0
 

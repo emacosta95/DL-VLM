@@ -10,6 +10,7 @@ from src.training.models import TDDFTCNNNoMemory, Causal_REDENT2D, LSTMTDDFT
 from src.training.model_unet import REDENTnopooling
 from src.training.train_module import fit
 from src.training.model_lstmcnn import CNNLSTM
+from src.training.unet_recurrent import UnetRNN
 from src.training.seq2seq import Seq2Seq
 from src.training.utils import (
     count_parameters,
@@ -336,10 +337,10 @@ def main(args):
                 n_block_layers=args.n_block_layers,
             )
 
-        elif args.model_type == "ChannelUNET":
-            model = REDENTnopooling(
+        elif args.model_type == "UnetRNN":
+            model = UnetRNN(
                 Loss=nn.MSELoss(),
-                in_channels=args.input_channels,
+                in_channels=2 * args.input_channels,
                 Activation=nn.GELU(),
                 hidden_channels=hc,
                 ks=kernel_size,
