@@ -369,7 +369,7 @@ def main(args):
             bs=bs,
             split=0.8,
             keys=args.keys,
-            time_interval=300,
+            time_interval=args.time_interval,
             preprocessing=args.preprocessing,
         )
         train_dls.append(train_dl)

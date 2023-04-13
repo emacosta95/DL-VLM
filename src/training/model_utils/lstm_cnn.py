@@ -2,6 +2,104 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.nn.modules.utils import _pair
+from typing import Tuple
+
+
+class ConvLSTMCell(nn.Module):
+    def __init__(
+        self,
+        input_channels: int,
+        hidden_channels: int,
+        output_channels: int,
+        kernel_size: Tuple,
+    ) -> None:
+        super().__init__()
+
+        self.x_i = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+        self.h_i = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+        self.c_i = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+
+        self.x_f = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+        self.h_f = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+        self.c_f = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+
+        self.x_c = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+        self.h_c = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+        self.c_c = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+
+        self.x_o = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+        self.h_o = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+        self.c_o = nn.Conv1d(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            kernel_size=kernel_size,
+            padding=(kernel_size - 1) // 2,
+        )
+
+    def forward(self, x: torch.Tensor, h: torch.Tensor, c: torch.Tensor):
+        x = self.initial_embedding(x)
+        i = F.sigmoid(self.x_i(x) + self.h_i(h) + self.c_i(c))
+        f = F.sigmoid(self.x_f(x) + self.h_f(h) + self.c_f(c))
+        c = f * c + i * F.tanh(self.x_c(x) + self.h_c(h))
+        o = F.sigmoid(self.x_o(x) + self.h_o(h) + self.c_o(c))
+        h = o * F.tanh(c)
+        x = self.final_embedding(x)
+        return x, h, c
 
 
 class Encoder1D(nn.Module):

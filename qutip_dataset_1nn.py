@@ -167,23 +167,28 @@ class Driving:
         return self.h[int(t / self.dt) - 1]
 
 
-class DrivingUniform:
+class DrivingUniformGaussian:
     def __init__(
         self,
         t_resolution: int,
         dt: float,
-        hmax: float,
+        e: np.ndarray,
+        l: np.ndarray,
     ) -> None:
         self.t_resolution = t_resolution
         self.dt = dt
-        self.i = i
 
-        self.h = None
-        noise = np.random.uniform(0.0, hmax, size=t_resolution)
-        self.h = noise
+        self.e = np.abs(e)
+        self.l = l
 
     def field(self, t: float, args) -> Union[np.ndarray, float]:
         return self.h[int(t / self.dt) - 1]
+
+    def get_instance(
+        self,
+    ):
+        self.h = np.random.randn(self.t_resolution)
+        self.h = np.einsum("ij,j,j->i", self.l, np.sqrt(self.e), self.h)
 
 
 class DrivingPeriodic:
@@ -229,7 +234,7 @@ t: np.ndarray = np.linspace(0, args.tf, t_resolution)
 # define the driving once for all
 if args.noise_type == "gaussian":
     c = np.random.uniform(0, args.c, size=args.different_gaussians)
-    sigma = np.random.randint(10, args.sigma, size=args.different_gaussians)
+    sigma = np.random.randint(1, args.sigma, size=args.different_gaussians)
 else:
     hmax = args.hmax
 
@@ -238,7 +243,7 @@ n_dataset = args.n_dataset
 
 file_name = (
     args.file_name
-    + f"_size_{size}_tf_{args.tf}_dt_{args.dt}_sigma_10_{args.sigma}_c_0_{args.c}_noise_{args.different_gaussians}_n_dataset_{n_dataset}"
+    + f"_size_{size}_tf_{args.tf}_dt_{args.dt}_sigma_1_{args.sigma}_c_0_{args.c}_noise_{args.different_gaussians}_n_dataset_{n_dataset}"
 )
 
 # return
@@ -258,19 +263,12 @@ ham0 = SpinHamiltonian(
 )
 
 # define the initial exp value
-eng, psi = np.linalg.eigh(ham0.qutip_op)
-psi0 = counting_multiplicity(psi, eng)
-print(psi0)
-print(np.dot(np.conj(psi0), psi0))
-print(eng)
-psi0 = qutip.Qobj(psi0, shape=psi0.shape, dims=([[2 for i in range(size)], [1]]))
-print()
+
 obs: List[qutip.Qobj] = []
 for i in range(size):
     x = SpinOperator(index=[("x", i)], coupling=[1.0], size=size, verbose=1)
     # print(f"x[{i}]=", x.qutip_op, "\n")
     obs.append(x.qutip_op)
-    z[:, 0, i] = x.expect_value(psi0)
 
 
 print("check the value=", z[0, 0, :])
@@ -281,6 +279,22 @@ for sample in trange(n_dataset):
     ham = [ham0.qutip_op]
 
     # define the time dependent part
+
+    # initialize c0 and sigma
+    if sample % args.different_gaussians == 0:
+        c0 = np.random.uniform(0, args.c)
+        sigma = np.random.uniform(1, args.sigma)
+        corr = c0 * np.exp(-1 * ((t[None, :] - t[:, None]) ** 2) / (2 * sigma ** 2))
+        e, l = np.linalg.eigh(corr)
+
+    # initialize the driving
+    if args.noise_type == "uniform":
+        driving = DrivingUniformGaussian(
+            t_resolution=t_resolution, dt=args.dt, e=e, l=l
+        )
+
+    # initialize the field
+    driving.get_instance()
     for i in range(size):
         if args.noise_type == "gaussian":
             driving = Driving(
@@ -289,20 +303,24 @@ for sample in trange(n_dataset):
                 sigma=sigma[sample % args.different_gaussians],
                 c=c[sample % args.different_gaussians],
             )
-        elif args.noise_type == "uniform":
-            driving = DrivingUniform(
-                t_resolution=t_resolution,
-                dt=args.dt,
-                hmax=hmax,
-            )
-
-        else:
+        elif args.noise_type == "periodic":
             driving = DrivingPeriodic(
                 t_resolution=t_resolution, dt=args.dt, a=args.a, omega=args.omega
             )
 
         hs[sample, :, i] = driving.h
         ham.append([obs[i], driving.field])
+
+    # interaction hamiltonian at time 0
+    ham1 = SpinHamiltonian(
+        field_directions=["x"], pbc=False, field_values=[driving.h[0]], size=size
+    )
+
+    # compute the initial state
+    eng, psi = np.linalg.eigh(ham0.qutip_op + ham1.qutip_op)
+    psi0 = counting_multiplicity(psi, eng)
+    psi0 = qutip.Qobj(psi0, shape=psi0.shape, dims=([[2 for i in range(size)], [1]]))
+
     # print("obs=", obs)
     output = qutip.sesolve(ham, psi0, t, e_ops=obs)
     # this is a shame

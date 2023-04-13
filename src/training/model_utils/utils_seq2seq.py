@@ -159,7 +159,12 @@ class DecodeBlock(nn.Module):
 
 class DecoderOperator(nn.Module):
     def __init__(
-        self, out_channels: int, kernel_size: int, n_conv: int, hc: int,in_channels:int
+        self,
+        out_channels: int,
+        kernel_size: int,
+        n_conv: int,
+        hc: int,
+        in_channels: int,
     ) -> None:
         super().__init__()
 
@@ -216,7 +221,11 @@ class DecoderOperator(nn.Module):
                 )
 
     def attention(self, e: torch.Tensor, d: torch.Tensor, x: torch.Tensor):
-        a = torch.einsum("bhti,bhri->bhtr", d, e)
+
+        a = torch.einsum("bhti,bhri->bhtr", d, e)  # causal effect
+        mask = torch.ones_like(a)
+        mask[:, :, e.shape[-2] // 2 + 1 :, e.shape[-2] // 2 + 1 :] = 0.0
+        a = a * mask
         c = F.softmax(a, dim=-1)
         c = torch.einsum("bhtr,bhri->bhti", c, (e + x))
         return c

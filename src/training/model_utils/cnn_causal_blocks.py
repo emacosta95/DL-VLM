@@ -179,11 +179,13 @@ class GatedConv2D(nn.Module):
             out_channels=hidden_channels,
             mask_type=mask_type,
         )
-        self.conv_x = MaskedSpaceConv2d(
+        self.conv_x = nn.Conv2d(
             kernel_size=[1, kernel_size[1]],
             in_channels=hidden_channels,
             out_channels=out_channels,
-            mask_type=mask_type,
+            padding=[0, (kernel_size[1] - 1) // 2],
+            padding_mode="circular"
+            # mask_type=mask_type,
         )
 
     def forward(self, x: torch.Tensor):

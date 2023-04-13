@@ -68,7 +68,7 @@ class Seq2Seq(nn.Module):
         y_input = y_input.unsqueeze(1)
         y_tilde = self.forward(x=x, y=y_input).squeeze(1)
         # y_tilde = self.probability_head.training_sample(mu, logsigma)
-        loss = self.loss(y_tilde, y.squeeze())
+        loss = self.loss(y_tilde, y.squeeze(1))
         return loss
 
     def valid_step(self, batch: Tuple, device: str):
@@ -76,7 +76,7 @@ class Seq2Seq(nn.Module):
         x = x.to(device=device, dtype=torch.double)
         # create some noise to improve the universality
         noise_mu = torch.zeros_like(x)
-        noise_sigma = 0.1 * torch.ones_like(x)
+        noise_sigma = 0.01 * torch.ones_like(x)
         noise = torch.normal(noise_mu, noise_sigma)
         y = y.to(device=device, dtype=torch.double)
         y_input = y + noise
@@ -92,10 +92,9 @@ class Seq2Seq(nn.Module):
         x = x.unsqueeze(1)
         y = y.unsqueeze(1)
         print(y.shape)
-        for t in range(time_step_initial, x.shape[-2] - 1):
-            for s in range(x.shape[-1]):
-                y_sample = self.forward(x=x, y=y)
-                y[:, 0, t, s] = y_sample
+        for t in range(time_step_initial, x.shape[-2]):
+            y_sample = self.forward(x=x, y=y)
+            y[:, 0, t, :] = y_sample[:, 0, t, :]
 
         y = y.squeeze()
         return y

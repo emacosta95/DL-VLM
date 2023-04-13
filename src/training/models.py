@@ -488,7 +488,7 @@ class Causal_REDENT2D(nn.Module):
             else:
                 x = x + outputs[self.n_conv_layers - 1 - i]
                 x = block(x)
-        x = torch.squeeze(x)
+        x = torch.squeeze(x, dim=1)
         # x = torch.sigmoid(x)  # we want to prove the Cross Entropy
         return x
 
@@ -496,7 +496,7 @@ class Causal_REDENT2D(nn.Module):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)
-        x = self.forward(x).squeeze()
+        x = self.forward(x).squeeze(1)
         loss = self.loss(x, y)
         return loss
 
@@ -504,7 +504,15 @@ class Causal_REDENT2D(nn.Module):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)
-        x = self.forward(x).squeeze()
+        x = self.forward(x).squeeze(1)
+        loss = self.loss(x, y)
+        return loss
+    
+    def valid_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x).squeeze(1)
         loss = self.loss(x, y)
         return loss
 
