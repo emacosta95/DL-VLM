@@ -17,8 +17,11 @@ class Seq2Seq(nn.Module):
         hc: int,
         in_channel: int,
         loss: nn.Module,
+        regularization: float,
     ) -> None:
         super().__init__()
+
+        self.regularization: float = regularization
 
         self.encoder = EncoderSeq2Seq(
             n_conv=n_conv,
@@ -59,7 +62,7 @@ class Seq2Seq(nn.Module):
         x = x.to(device=device, dtype=torch.double)
         # create some noise to improve the universality
         noise_mu = torch.zeros_like(x)
-        noise_sigma = 0.1 * torch.ones_like(x)
+        noise_sigma = self.regularization * torch.ones_like(x)
         noise = torch.normal(noise_mu, noise_sigma)
         y = y.to(device=device, dtype=torch.double)
         y_input = y + noise
@@ -76,7 +79,7 @@ class Seq2Seq(nn.Module):
         x = x.to(device=device, dtype=torch.double)
         # create some noise to improve the universality
         noise_mu = torch.zeros_like(x)
-        noise_sigma = 0.01 * torch.ones_like(x)
+        noise_sigma = self.regularization * torch.ones_like(x)
         noise = torch.normal(noise_mu, noise_sigma)
         y = y.to(device=device, dtype=torch.double)
         y_input = y + noise

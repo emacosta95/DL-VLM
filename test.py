@@ -26,13 +26,13 @@ z_ml = {}
 z_target = {}
 for ts in time_intervals:
     model = torch.load(
-        f"model_rep/causalunet/uniform_gaussian_noise/causalunet_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_64_150k_pbc_[40, 40, 40, 40]_hc_[11, 1]_ks_1_ps_4_nconv_0_nblock",
+        f"model_rep/cnnlstm/uniform_gaussian_noise/cnnlstm_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_48_150k_pbc_[40, 40, 40, 40, 40, 40, 40, 40, 40]_hc_[1]_ks_1_ps_9_nconv_0_nblock",
         map_location="cpu",
     )
-    model = torch.load(
-        f"model_rep/causalunet/uniform_gaussian_noise/causalunet_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_64_15k_pbc_[120, 120, 120, 120]_hc_[11, 1]_ks_1_ps_4_nconv_0_nblock",
-        map_location="cpu",
-    )
+    # model = torch.load(
+    #     f"model_rep/causalunet/uniform_gaussian_noise/causalunet_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_64_15k_pbc_[80, 80, 80, 80]_hc_[11, 1]_ks_1_ps_4_nconv_0_nblock",
+    #     map_location="cpu",
+    # )
     model.to(dtype=torch.double)
     model.eval()
 
@@ -94,13 +94,13 @@ t = data["time"][:96]
 z_ml = {}
 z_target = {}
 model = torch.load(
-    f"model_rep/seq2seq/uniform_gaussian_noise/seq2seq_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_48_15k_pbc_[80, 80, 80, 80]_hc_[5, 1]_ks_1_ps_4_nconv_0_nblock",
+    f"model_rep/seq2seq/uniform_gaussian_noise/regularization_01_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_48_150k_pbc_[40, 40, 40, 40, 40, 40, 40, 40, 40]_hc_[5, 1]_ks_1_ps_9_nconv_0_nblock",
     map_location="cpu",
 )
 model.to(dtype=torch.double)
 model.eval()
 
-time_step_initial = 50
+time_step_initial = 0
 print(h.shape)
 z_ml = model(x=h[:10].unsqueeze(1), y=z[0:10].unsqueeze(1))
 z_complete = z.clone()
@@ -130,7 +130,7 @@ for i in range(1):
         plt.show()
 # %%
 
-time_step_initial = 5
+time_step_initial = 0
 n_samples = 20
 idx = 0
 k = 0
@@ -160,7 +160,7 @@ mae = np.average(
 
 for s in range(2):
     plt.plot(mae[:])
-    plt.semilogy()
+    # plt.semilogy()
     plt.show()
 
 

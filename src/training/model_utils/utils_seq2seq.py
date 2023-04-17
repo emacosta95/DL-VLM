@@ -77,7 +77,7 @@ class EncodeBlock(nn.Module):
         super().__init__()
         self.act_bool = activation
         if activation:
-            self.activation = nn.GELU()
+            self.activation = nn.Mish()
             self.out_channels = out_channels
 
         else:
@@ -120,7 +120,7 @@ class DecodeBlock(nn.Module):
         super().__init__()
         self.act_bool = activation
         if activation:
-            self.activation = nn.GELU()
+            self.activation = nn.Mish()
             self.out_channels = out_channels
 
         else:

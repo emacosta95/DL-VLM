@@ -9,7 +9,7 @@ import torch.nn as nn
 from src.training.models import TDDFTCNNNoMemory, Causal_REDENT2D, LSTMTDDFT
 from src.training.model_unet import REDENTnopooling
 from src.training.train_module import fit
-from src.training.model_lstmcnn import CNNLSTM
+from src.training.cnn_lstm import CNNLSTM
 from src.training.unet_recurrent import UnetRNN
 from src.training.seq2seq import Seq2Seq
 from src.training.utils import (
@@ -213,6 +213,13 @@ parser.add_argument(
     default=10,
 )
 
+parser.add_argument(
+    "--regularization",
+    type=float,
+    help="order (in absolute value) of the input noise",
+    default=2,
+)
+
 
 def main(args):
 
@@ -304,6 +311,7 @@ def main(args):
                 hc=hc[0],
                 in_channel=input_channels,
                 loss=nn.MSELoss(),
+                regularization=10 ** (-1 * args.regularization),
             )
         elif args.model_type == "TDDFTCNN":
             pixel = False
@@ -337,20 +345,14 @@ def main(args):
                 n_block_layers=args.n_block_layers,
             )
 
-        elif args.model_type == "UnetRNN":
-            model = UnetRNN(
+        elif args.model_type == "CNNLSTM":
+            model = CNNLSTM(
                 Loss=nn.MSELoss(),
-                in_channels=2 * args.input_channels,
-                Activation=nn.GELU(),
-                hidden_channels=hc,
-                ks=kernel_size,
-                padding=(kernel_size[0] - 1) // 2,
-                padding_mode=padding_mode,
-                n_conv_layers=n_conv_layers,
-                out_features=input_size,
-                in_features=input_size,
-                out_channels=args.input_channels,
-                n_block_layers=args.n_block_layers,
+                input_channels=args.input_channels,
+                hidden_channels=hc[0],
+                kernel_size=kernel_size[0],
+                n_conv=len(hc),
+                output_channels=args.input_channels,
             )
 
     model = model.to(pt.double)

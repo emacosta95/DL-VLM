@@ -8,9 +8,7 @@ from typing import Tuple
 class ConvLSTMCell(nn.Module):
     def __init__(
         self,
-        input_channels: int,
         hidden_channels: int,
-        output_channels: int,
         kernel_size: Tuple,
     ) -> None:
         super().__init__()
@@ -92,13 +90,11 @@ class ConvLSTMCell(nn.Module):
         )
 
     def forward(self, x: torch.Tensor, h: torch.Tensor, c: torch.Tensor):
-        x = self.initial_embedding(x)
-        i = F.sigmoid(self.x_i(x) + self.h_i(h) + self.c_i(c))
-        f = F.sigmoid(self.x_f(x) + self.h_f(h) + self.c_f(c))
-        c = f * c + i * F.tanh(self.x_c(x) + self.h_c(h))
-        o = F.sigmoid(self.x_o(x) + self.h_o(h) + self.c_o(c))
-        h = o * F.tanh(c)
-        x = self.final_embedding(x)
+        i = F.gelu(self.x_i(x) + self.h_i(h) + self.c_i(c))
+        f = torch.sigmoid(self.x_f(x) + self.h_f(h) + self.c_f(c))
+        c = f * c + i * torch.tanh(self.x_c(x) + self.h_c(h))
+        o = F.gelu(self.x_o(x) + self.h_o(h) + self.c_o(c))
+        h = o * torch.tanh(c)
         return x, h, c
 
 
