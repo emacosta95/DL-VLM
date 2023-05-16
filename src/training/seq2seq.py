@@ -50,7 +50,6 @@ class Seq2Seq(nn.Module):
         self.loss = loss
 
     def forward(self, x: torch.Tensor, y: torch.Tensor):
-
         e = self.encoder(x)
         y_tilde = self.decoder(x=x, y=y, e=e)
         # mu, logsigma = self.probability_head(h)
@@ -95,7 +94,7 @@ class Seq2Seq(nn.Module):
         x = x.unsqueeze(1)
         y = y.unsqueeze(1)
         print(y.shape)
-        for t in range(time_step_initial, x.shape[-2]):
+        for t in range(1 + time_step_initial, x.shape[-2]):
             y_sample = self.forward(x=x, y=y)
             y[:, 0, t, :] = y_sample[:, 0, t, :]
 

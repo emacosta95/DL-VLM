@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.nn.modules.utils import _pair
-from typing import Tuple
+from typing import Tuple, List
 
 
 class ConvLSTMCell(nn.Module):
@@ -111,12 +111,15 @@ class Encoder1D(nn.Module):
         n_layers: int,
         pooling_size: int,
         hidden_neurons: int,
+        size_restriction: int,
     ) -> None:
         super().__init__()
 
-        self.conv_part = nn.Sequential()
+        self.size_restriction = size_restriction
+        self.conv_part = nn.ModuleList()
         n_conv = len(hc)
-        self.conv_part.add_module(
+        block = nn.Sequential()
+        block.add_module(
             f"conv_{-1}",
             nn.Conv1d(
                 in_channels=in_channels,
@@ -126,12 +129,15 @@ class Encoder1D(nn.Module):
                 padding=(kernel_size - 1) // 2,
             ),
         )
-        self.conv_part.add_module(f"act {-1}", activation)
-        self.conv_part.add_module(
-            f"pooling {-1}", nn.AvgPool1d(kernel_size=pooling_size)
+        block.add_module(
+            f"bn_{-1}",
+            nn.BatchNorm1d(hc[-1]),
         )
+        block.add_module(f"act {-1}", activation)
+        self.conv_part.add_module(f"block {-1}", block)
         for i in range(n_conv - 1):
-            self.conv_part.add_module(
+            block = nn.Sequential()
+            block.add_module(
                 f"conv_{i}",
                 nn.Conv1d(
                     in_channels=hc[i - 1],
@@ -141,28 +147,111 @@ class Encoder1D(nn.Module):
                     padding=(kernel_size - 1) // 2,
                 ),
             )
-            self.conv_part.add_module(f"act_{i}", activation)
-            self.conv_part.add_module(
-                f"pooling {i}", nn.AvgPool1d(kernel_size=pooling_size)
+            block.add_module(
+                f"bn_{i}",
+                nn.BatchNorm1d(hc[i]),
             )
-        self.conv_part.add_module("global pooling", nn.AdaptiveAvgPool1d(1))
+            block.add_module(f"act_{i}", activation)
+            self.conv_part.add_module(f"block {i}", block)
 
         self.latent_operator = nn.Sequential()
         for i in range(n_layers):
-            self.latent_operator.add_module(
-                f"layer {i}", nn.Linear(hc[-1], hidden_neurons)
-            )
-            self.latent_operator.add_module(f"dens act {i}", activation)
+            if i == 0:
+                self.latent_operator.add_module(
+                    f"layer {i}",
+                    nn.Linear(hc[-1] * self.size_restriction, hidden_neurons),
+                )
+                self.latent_operator.add_module(f"dens act {i}", activation)
+            else:
+                self.latent_operator.add_module(
+                    f"layer {i}", nn.Linear(hidden_neurons, hidden_neurons)
+                )
+                self.latent_operator.add_module(f"dens act {i}", activation)
+
         self.latent_operator.add_module(
             "final layer", nn.Linear(hidden_neurons, latent_dimension)
         )
 
     def forward(self, x: torch.Tensor):
-        x = x.unsqueeze(1)
-        x = self.conv_part(x)
-        x = x.squeeze()
+        outputs = []
+        for i, conv in enumerate(self.conv_part):
+            x = conv(x)
+            outputs.append(x)
+        x = F.adaptive_avg_pool1d(x, output_size=self.size_restriction)
+        # print("x restriction", x.shape)
+        x = x.view(x.shape[0], -1)
         l = self.latent_operator(x)
-        return l
+        return l, outputs
+
+
+class Encoder2D(nn.Module):
+    def __init__(
+        self,
+        n_conv: int,
+        activation: nn.Module,
+        hc: int,
+        in_channels: int,
+        kernel_size: int,
+        padding_mode: str,
+        latent_dimension: int,
+        n_layers: int,
+        pooling_size: int,
+        hidden_neurons: int,
+        size_restriction: int,
+    ) -> None:
+        super().__init__()
+
+        self.size_restriction = size_restriction
+        self.conv_part = nn.ModuleList()
+        n_conv = len(hc)
+        block = nn.Sequential()
+        block.add_module(
+            f"conv_{-1}",
+            nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=hc[0],
+                kernel_size=[1, kernel_size],
+                padding_mode=padding_mode,
+                padding=[0, (kernel_size - 1) // 2],
+            ),
+        )
+        block.add_module(
+            f"bn_{-1}",
+            nn.BatchNorm2d(hc[-1]),
+        )
+        block.add_module(f"act {-1}", activation)
+        self.conv_part.add_module(f"block {-1}", block)
+        for i in range(n_conv - 1):
+            block = nn.Sequential()
+            block.add_module(
+                f"conv_{i}",
+                nn.Conv2d(
+                    in_channels=hc[i - 1],
+                    out_channels=hc[i],
+                    kernel_size=[1, kernel_size],
+                    padding_mode=padding_mode,
+                    padding=[0, (kernel_size - 1) // 2],
+                ),
+            )
+            block.add_module(
+                f"bn_{i}",
+                nn.BatchNorm2d(hc[i]),
+            )
+            block.add_module(f"act_{i}", activation)
+            self.conv_part.add_module(f"block {i}", block)
+
+    def forward(self, x: torch.Tensor):
+        outputs = []
+        for i, conv in enumerate(self.conv_part):
+            x = conv(x)
+            outputs.append(x)
+        x = F.adaptive_avg_pool2d(x, output_size=[x.shape[-2], self.size_restriction])
+        # print("x restriction", x.shape)
+        # x = x.view(x.shape[0], -1)
+        # l = self.latent_operator(x)
+        l = x.squeeze(1)
+        l = l.view(l.shape[0], l.shape[-2], -1)
+        return l, outputs
 
 
 class Decoder1D(nn.Module):
@@ -170,51 +259,65 @@ class Decoder1D(nn.Module):
         self,
         n_conv: int,
         activation: nn.Module,
-        hc: int,
-        in_channels: int,
+        hc: List,
         out_channels: int,
         kernel_size: int,
         latent_dimension: int,
         n_layers: int,
         hidden_neurons: int,
+        input_size: int,
     ) -> None:
         super().__init__()
 
-        self.in_channels = in_channels
+        self.input_size = input_size
+        self.in_channels = hc[-1]
         self.kernel_size = kernel_size
 
-        self.conv_part = nn.Sequential()
+        self.conv_part = nn.ModuleList()
         n_conv = len(hc)
-        self.conv_part.add_module(
+        self.n_conv = n_conv
+        block = nn.Sequential()
+        block.add_module(
             f"conv_{-1}",
-            nn.ConvTranspose1d(
-                in_channels=in_channels,
-                out_channels=hc[0],
-                kernel_size=kernel_size + 1,
-                padding_mode="zeros",
+            nn.Conv1d(
+                in_channels=self.in_channels,
+                out_channels=hc[-1],
+                kernel_size=kernel_size,
+                padding_mode="circular",
                 padding=(kernel_size - 1) // 2,
             ),
         )
-        self.conv_part.add_module(f"act_{-1}", activation)
+        block.add_module(
+            f"bn_{-1}",
+            nn.BatchNorm1d(hc[-1]),
+        )
+        block.add_module(f"act_{-1}", activation)
+        self.conv_part.add_module(f"block -1", block)
         for i in range(n_conv - 1):
-            self.conv_part.add_module(
+            block = nn.Sequential()
+            block.add_module(
                 f"conv_{i}",
-                nn.ConvTranspose1d(
-                    in_channels=hc[i - 1],
-                    out_channels=hc[i],
-                    kernel_size=kernel_size + 1,
-                    padding_mode="zeros",
+                nn.Conv1d(
+                    in_channels=hc[-i - 1],
+                    out_channels=hc[-i - 2],
+                    kernel_size=kernel_size,
+                    padding_mode="circular",
                     padding=(kernel_size - 1) // 2,
                 ),
             )
-            self.conv_part.add_module(f"act_{i}", activation)
+            block.add_module(
+                f"bn_{i}",
+                nn.BatchNorm1d(hc[-i - 1]),
+            )
+            block.add_module(f"act_{i}", activation)
+            self.conv_part.add_module(f"block {i}", block)
         self.conv_part.add_module(
-            f"conv_{i+1}",
-            nn.ConvTranspose1d(
-                in_channels=hc[-1],
+            f"block_{i+1}",
+            nn.Conv1d(
+                in_channels=hc[0],
                 out_channels=out_channels,
-                kernel_size=kernel_size + 1,
-                padding_mode="zeros",
+                kernel_size=kernel_size,
+                padding_mode="circular",
                 padding=(kernel_size - 1) // 2,
             ),
         )
@@ -231,35 +334,99 @@ class Decoder1D(nn.Module):
             )
             self.latent_operator.add_module(f"dens act {i}", activation)
         self.latent_operator.add_module(
-            "final layer", nn.Linear(hidden_neurons, in_channels * (kernel_size + 1))
+            "final layer",
+            nn.Linear(hidden_neurons, self.in_channels * (self.input_size)),
         )
 
-    def forward(self, l: torch.Tensor):
+    def forward(self, l: torch.Tensor, outputs: List):
         x = self.latent_operator(l)
-        x = x.view(-1, self.in_channels, self.kernel_size + 1)
-        x = self.conv_part(x)
+        x = x.view(-1, self.in_channels, self.input_size)
+        # print("decoder initial x", x.shape)
+        for i, conv in enumerate(self.conv_part):
+            # print("out shape", outputs[-i - 1].shape, "x", x.shape)
+            if i < self.n_conv:
+                x = conv(x + outputs[-i - 1])
+            elif i == self.n_conv:
+                x = conv(x)
         return x
 
 
-class LSTMcell(nn.Module):
-    def __init__(self, input_size: int, output_size: int) -> None:
+class Decoder2D(nn.Module):
+    def __init__(
+        self,
+        n_conv: int,
+        activation: nn.Module,
+        hc: List,
+        out_channels: int,
+        kernel_size: int,
+        latent_dimension: int,
+        n_layers: int,
+        hidden_neurons: int,
+        input_size: int,
+    ) -> None:
         super().__init__()
-        self.f_h = nn.Linear(input_size, output_size)
-        self.f_x = nn.Linear(input_size, output_size)
-        self.i_h = nn.Linear(input_size, output_size)
-        self.i_x = nn.Linear(input_size, output_size)
-        self.o_x = nn.Linear(input_size, output_size)
-        self.o_h = nn.Linear(input_size, output_size)
-        self.c_h = nn.Linear(input_size, output_size)
-        self.c_x = nn.Linear(input_size, output_size)
 
-    def forward(self, x: torch.Tensor, h: torch.Tensor, c: torch.Tensor):
+        self.input_size = input_size
+        self.in_channels = hc[-1]
+        self.kernel_size = kernel_size
 
-        f = torch.sigmoid(self.f_x(x) + self.f_h(h))
-        i = torch.sigmoid(self.i_x(x) + self.i_h(h))
-        o = torch.sigmoid(self.o_x(x) + self.o_h(h))
-        c_tilde = torch.tanh(self.c_x(x) + self.c_h(h))
-        c = f * c + i * c_tilde
-        h = o * c
+        self.conv_part = nn.ModuleList()
+        n_conv = len(hc)
+        self.n_conv = n_conv
+        block = nn.Sequential()
+        block.add_module(
+            f"conv_{-1}",
+            nn.Conv2d(
+                in_channels=self.in_channels,
+                out_channels=hc[-1],
+                kernel_size=[1, kernel_size],
+                padding_mode="circular",
+                padding=[0, (kernel_size - 1) // 2],
+            ),
+        )
+        block.add_module(
+            f"bn_{-1}",
+            nn.BatchNorm2d(hc[-1]),
+        )
+        block.add_module(f"act_{-1}", activation)
+        self.conv_part.add_module(f"block -1", block)
+        for i in range(n_conv - 1):
+            block = nn.Sequential()
+            block.add_module(
+                f"conv_{i}",
+                nn.Conv1d(
+                    in_channels=hc[-i - 1],
+                    out_channels=hc[-i - 2],
+                    kernel_size=[1, kernel_size],
+                    padding_mode="circular",
+                    padding=[0, (kernel_size - 1) // 2],
+                ),
+            )
+            block.add_module(
+                f"bn_{i}",
+                nn.BatchNorm2d(hc[-i - 1]),
+            )
+            block.add_module(f"act_{i}", activation)
+            self.conv_part.add_module(f"block {i}", block)
+        self.conv_part.add_module(
+            f"block_{i+1}",
+            nn.Conv2d(
+                in_channels=hc[0],
+                out_channels=out_channels,
+                kernel_size=[1, kernel_size],
+                padding_mode="circular",
+                padding=[0, (kernel_size - 1) // 2],
+            ),
+        )
 
-        return o, h, c
+    def forward(self, l: torch.Tensor, outputs: List):
+        # x = self.latent_operator(l)
+        x = l.view(l.shape[0], self.in_channels, -1, self.input_size)
+        # print("decoder initial x", x.shape)
+        for i, conv in enumerate(self.conv_part):
+            # print("out shape", outputs[-i - 1].shape, "x", x.shape)
+            if i < self.n_conv:
+                x = conv(x + outputs[-i - 1])
+            elif i == self.n_conv:
+                x = conv(x)
+        return x

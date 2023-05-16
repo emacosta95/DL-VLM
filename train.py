@@ -7,10 +7,9 @@ import torch as pt
 import torch.nn as nn
 
 from src.training.models import TDDFTCNNNoMemory, Causal_REDENT2D, LSTMTDDFT
+from src.training.unet_recurrent import UnetLSTM_beta
 from src.training.model_unet import REDENTnopooling
 from src.training.train_module import fit
-from src.training.cnn_lstm import CNNLSTM
-from src.training.unet_recurrent import UnetRNN
 from src.training.seq2seq import Seq2Seq
 from src.training.utils import (
     count_parameters,
@@ -85,7 +84,7 @@ parser.add_argument(
     "--early_stopping",
     type=float,
     help="the threshold difference for the early stopping (default=10**-4)",
-    default=10 ** -4,
+    default=10**-4,
 )
 
 parser.add_argument(
@@ -130,11 +129,19 @@ parser.add_argument(
     default=[10 for i in range(2)],
 )
 
+
 parser.add_argument(
-    "--n_block_layers",
+    "--lstm_layers",
     type=int,
-    help="number of additional convolution in a given block (default=0)",
-    default=0,
+    help="number of additional convolution in a given block (default=1)",
+    default=1,
+)
+
+parser.add_argument(
+    "--hidden_neurons",
+    type=int,
+    help="number of additional convolution in a given block (default=1)",
+    default=1,
 )
 
 
@@ -222,7 +229,6 @@ parser.add_argument(
 
 
 def main(args):
-
     # hyperparameters
 
     device = pt.device(args.device)
@@ -262,7 +268,7 @@ def main(args):
     name_ks = f"_{kernel_size}_ks"
     name_pooling_size = f"_{pooling_size}_ps"
     name_n_conv = f"_{len(hc)}_nconv"
-    name_n_block = f"_{args.n_block_layers}_nblock"
+    name_n_block = f"_{args.n_layers}_nblock"
     model_name = (
         model_name + name_hc + name_ks + name_pooling_size + name_n_conv + name_n_block
     )
@@ -327,32 +333,21 @@ def main(args):
                 out_channels=input_channels,
                 t_interval_range=time_interval,
             )
-        elif args.model_type == "CausalUnet":
+        elif args.model_type == "UnetLSTM":
             pixel = False
-            model = Causal_REDENT2D(
+            model = UnetLSTM_beta(
                 Loss=nn.MSELoss(),
                 in_channels=input_channels,
-                Activation=nn.GELU(),
-                hidden_channels=hc,
-                ks=kernel_size,
-                padding=[(kernel_size[0] - 1) // 2, (kernel_size[1] - 1) // 2],
-                padding_mode=padding_mode,
-                # pooling_size=pooling_size,
-                n_conv_layers=n_conv_layers,
-                out_features=input_size,
-                in_features=input_size,
-                out_channels=input_channels,
-                n_block_layers=args.n_block_layers,
-            )
-
-        elif args.model_type == "CNNLSTM":
-            model = CNNLSTM(
-                Loss=nn.MSELoss(),
-                input_channels=args.input_channels,
-                hidden_channels=hc[0],
+                input_size=args.input_size,
+                activation=nn.GELU(),
+                hc=hc,
                 kernel_size=kernel_size[0],
-                n_conv=len(hc),
-                output_channels=args.input_channels,
+                # pooling_size=pooling_size,
+                n_layers=args.n_layers,
+                hidden_neurons=args.hidden_neurons,
+                latent_dimension=args.latent_dimension,
+                out_channels=input_channels,
+                lstm_layers=args.lstm_layers,
             )
 
     model = model.to(pt.double)
@@ -400,7 +395,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     args = parser.parse_args()
 
     main(args)

@@ -42,9 +42,10 @@ class CNNLSTM(nn.Module):
             )
 
     def forward(self, b: torch.Tensor):
+        # normalization
+        b = (b - b.mean()) / b.std()
         b = b.unsqueeze(1)
         for t in range(b.shape[-2]):
-
             x = self.initial_embedding(b[:, :, t])
             if t == 0:
                 h = torch.zeros_like(x)

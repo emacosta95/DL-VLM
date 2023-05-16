@@ -1,4 +1,4 @@
-#%%
+# %%
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # )
 
 data = np.load(
-    "data/uniform/train_size_6_tf_10.0_dt_0.1_sigma_1_9_c_0_4_set_of_gaussians_100_n_dataset_60000.npz"
+    "data/periodic/test_size_6_tf_20.0_dt_0.1_sigma_10_40_c_0_4.0_noise_100_n_dataset_200.npz"
 )
 
 n_samples = 200
@@ -17,7 +17,7 @@ z = torch.tensor(data["density"][-n_samples:, :96], dtype=torch.double)
 h = torch.tensor(data["potential"][-n_samples:, :96], dtype=torch.double)
 t = data["time"][:96]
 
-#%% load the models
+# %% load the models
 
 time_intervals = [128]
 
@@ -26,7 +26,7 @@ z_ml = {}
 z_target = {}
 for ts in time_intervals:
     model = torch.load(
-        f"model_rep/cnnlstm/uniform_gaussian_noise/cnnlstm_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_48_150k_pbc_[40, 40, 40, 40, 40, 40, 40, 40, 40]_hc_[1]_ks_1_ps_9_nconv_0_nblock",
+        f"model_rep/unetlstm/periodic/test_2_[40, 40]_hc_[3]_ks_1_ps_2_nconv_1_nblock",
         map_location="cpu",
     )
     # model = torch.load(
@@ -43,26 +43,40 @@ for ts in time_intervals:
     z_ml[ts] = z_new.detach().numpy()
     z_target[ts] = z.detach().numpy()
 
-#%%
+# %%
 print(z.shape)
 print(z_new.shape)
 
-#%%
+# %%
 for k in [0, 1, 2, 3, 4]:
-    plt.title(f"instance={k}")
-    plt.plot(t, z_new.detach().numpy()[k, :])
-    plt.plot(t, z.detach().numpy()[k, :])
-    # plt.plot(t, h.detach().numpy()[k, :], color="black", linestyle="--")
-    plt.show()
+    for j in range(6):
+        plt.title(f"instance={k}")
+        plt.plot(t, z_new.detach().numpy()[k, :, j])
+        plt.plot(t, z.detach().numpy()[k, :, j])
+        # plt.plot(t, h.detach().numpy()[k, :], color="black", linestyle="--")
+        plt.show()
 
-    mse_instances = np.abs(z_new[k, :].detach().numpy() - z[k, :, 0].detach().numpy())
+    mse_instances = np.abs(
+        z_new[k, :, 0].detach().numpy() - z[k, :, 0].detach().numpy()
+    )
     plt.plot(t, mse_instances)
     plt.show()
 
 # %%
 
 mse = np.average(
-    np.abs(z_new[:, :].detach().numpy() - z[0:n_samples, :, 0].detach().numpy()),
+    np.average(
+        np.abs(
+            z_new[:, :].detach().numpy()
+            - z[
+                0:n_samples,
+                :,
+            ]
+            .detach()
+            .numpy()
+        ),
+        axis=-1,
+    ),
     axis=0,
 )
 
@@ -94,7 +108,7 @@ t = data["time"][:96]
 z_ml = {}
 z_target = {}
 model = torch.load(
-    f"model_rep/seq2seq/uniform_gaussian_noise/regularization_01_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_48_150k_pbc_[40, 40, 40, 40, 40, 40, 40, 40, 40]_hc_[5, 1]_ks_1_ps_9_nconv_0_nblock",
+    f"model_rep/seq2seq/uniform_gaussian_noise/regularization_001_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_48_150k_pbc_[40, 40, 40, 40, 40, 40, 40, 40, 40]_hc_[5, 1]_ks_1_ps_9_nconv_0_nblock",
     map_location="cpu",
 )
 model.to(dtype=torch.double)
@@ -137,7 +151,7 @@ k = 0
 
 h_sample = h[:n_samples]
 z_sample = torch.zeros_like(h_sample)
-z_sample[:, :time_step_initial] = z[:n_samples, :time_step_initial]
+z_sample[:, : time_step_initial + 1] = z[:n_samples, : time_step_initial + 1]
 
 z_ml = model.prediction_step(
     x=h_sample[:n_samples, :], y=z_sample, time_step_initial=time_step_initial
@@ -145,14 +159,14 @@ z_ml = model.prediction_step(
 
 print(z_ml.shape)
 print(z.shape)
-#%%
+# %%
 for s in range(n_samples):
     for i in range(1):
         plt.plot(z_ml.detach().numpy()[s, :])
         plt.plot(z[s, :, i].detach().numpy())
         plt.show()
 
-#%%
+# %%
 
 mae = np.average(
     np.abs(z_ml.detach().numpy() - z[:, :, 0].detach().numpy()[0:n_samples]), axis=0
@@ -184,4 +198,70 @@ z_ml[0, 0, t_point, 0].backward(torch.ones_like(z_ml[0, 0, t_point, 0]))
 grad = output.grad
 
 print(grad[0, :, t_point - 10 : t_point + 10, :])
+# %%
+# %%
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# data = np.load(
+#     "data/gaussian_driving/train_size_6_tf_10.0_dt_0.05_sigma_10_20_c_0_2.0_noise_100_n_dataset_15000.npz"
+# )
+
+data = np.load(
+    "data/periodic/train_size_6_tf_10.0_dt_0.1_a_0_1_omega_0_4_n_dataset_15000.npz"
+)
+
+n_samples = 200
+z = torch.tensor(data["density"][-n_samples:, :96], dtype=torch.double)
+h = torch.tensor(data["potential"][-n_samples:, :96], dtype=torch.double)
+t = data["time"][:96]
+
+# %% load the models
+
+time_intervals = [128]
+
+
+z_ml = {}
+z_target = {}
+for ts in time_intervals:
+    model = torch.load(
+        f"model_rep/unetlstm/periodic/test_1_[40, 40, 40, 40]_hc_[3]_ks_1_ps_4_nconv_0_nblock",
+        map_location="cpu",
+    )
+    # model = torch.load(
+    #     f"model_rep/causalunet/uniform_gaussian_noise/causalunet_sigma_1_9_c_0_4_set_of_gaussians_100_t_01_l_6_nt_64_15k_pbc_[80, 80, 80, 80]_hc_[11, 1]_ks_1_ps_4_nconv_0_nblock",
+    #     map_location="cpu",
+    # )
+    model.to(dtype=torch.double)
+    model.eval()
+
+    print(h.shape)
+    z_new = model(h[0:n_samples])
+
+    z_new = z_new.squeeze()
+    z_ml[ts] = z_new.detach().numpy()
+    z_target[ts] = z.detach().numpy()
+
+# %%
+print(z.shape)
+print(z_new.shape)
+
+# %%
+for r in range(5):
+    for k in [0, 1, 2, 3, 4]:
+        plt.title(f"instance={k}")
+        plt.plot(t, z_new.detach().numpy()[r, :, k])
+        plt.plot(t, z.detach().numpy()[r, :, k])
+        # plt.plot(t, h.detach().numpy()[k, :], color="black", linestyle="--")
+        plt.show()
+
+        mse_instances = np.average(
+            np.abs(z_new[k, :, :].detach().numpy() - z[k, :, :].detach().numpy()),
+            axis=-1,
+        )
+        plt.plot(t, mse_instances)
+        plt.show()
+
 # %%

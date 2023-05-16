@@ -4,7 +4,6 @@ import qutip
 from tqdm import tqdm, trange
 from typing import Dict, List, Tuple, Union
 import matplotlib.pyplot as plt
-from qutip.solver import Options
 import argparse
 from scipy.fft import fft, ifft
 from src.qutip_lab.utils import counting_multiplicity
@@ -95,6 +94,13 @@ parser.add_argument(
     default=15000,
 )
 
+parser.add_argument(
+    "--n_initial_field",
+    type=int,
+    help="number of diffenent constant initial field",
+    default=100,
+)
+
 
 parser.add_argument(
     "--different_gaussians",
@@ -113,8 +119,8 @@ parser.add_argument(
 parser.add_argument(
     "--noise_type",
     type=str,
-    help="type of noise that can be either 'gaussian' or 'uniform' (default=gaussian)",
-    default="gaussian",
+    help="type of noise that can be either 'periodic' ,'uniform' or 'gaussian' (default=periodic)",
+    default="periodic",
 )
 
 
@@ -204,8 +210,8 @@ class DrivingPeriodic:
         self.i = i
 
         self.h = None
-        a_i = np.random.uniform(0, a, size=4)
-        omega_i = np.random.uniform(0, omega, size=4)
+        a_i = np.random.uniform(0.1, a, size=4)
+        omega_i = np.random.uniform(0.1, omega, size=4)
         t = np.linspace(0, dt * t_resolution, t_resolution)
         h_i = a_i[:, None] * np.sin(omega_i[:, None] * t[None, :])
         self.h = np.average(h_i, axis=0)
@@ -220,7 +226,7 @@ size: int = args.size
 # periodic boundary conditions
 pbc: bool = True
 
-
+# fix the random seed
 np.random.seed(args.seed)
 
 # coupling term
@@ -243,59 +249,61 @@ n_dataset = args.n_dataset
 
 file_name = (
     args.file_name
-    + f"_size_{size}_tf_{args.tf}_dt_{args.dt}_sigma_1_{args.sigma}_c_0_{args.c}_noise_{args.different_gaussians}_n_dataset_{n_dataset}"
+    + f"_size_{size}_tf_{args.tf}_dt_{args.dt}_sigma_1_{args.sigma}_c_0_{args.c}_initial_field_{args.n_initial_field}_n_dataset_{n_dataset}"
 )
 
-# return
-z = np.zeros((n_dataset, t_resolution, size))
-hs = np.zeros((n_dataset, t_resolution, size))
+# initialization of the return value
+z: np.ndarray = np.zeros((n_dataset, t_resolution, size))
+hs: np.ndarray = np.zeros((n_dataset, t_resolution, size))
+x: np.ndarray =np.zeros((n_dataset, t_resolution, size))
 
 
-# for k in range(size):
-#     print(driving_fields[k].i)
-#     driving_fields[k].get_instance(0)
-#     plt.plot(driving_fields[k].h)
-
-
-# define the time independent hamiltonian
-ham0 = SpinHamiltonian(
-    direction_couplings=[("z", "z")], pbc=True, coupling_values=[1], size=size
-)
 
 # define the initial exp value
-
 obs: List[qutip.Qobj] = []
+obs_x: List[qutip.Qobj]=[]
 for i in range(size):
-    x = SpinOperator(index=[("x", i)], coupling=[1.0], size=size, verbose=1)
+    z_op= SpinOperator(index=[("z", i)], coupling=[1.0], size=size, verbose=1)
     # print(f"x[{i}]=", x.qutip_op, "\n")
-    obs.append(x.qutip_op)
+    x_op=SpinOperator(index=[("x", i)], coupling=[1.0], size=size, verbose=1)
+    obs.append(z_op.qutip_op)
+    obs_x.append(x_op.qutip_op)
 
-
-print("check the value=", z[0, 0, :])
+# initial constant field
+h0=np.random.uniform(-5,5,size=(args.n_initial_field))
 
 
 for sample in trange(n_dataset):
+    
+    # define the initial time independent Hamiltonian
+    if sample % args.n_initial_field ==0:
+        ham0 = SpinHamiltonian(
+        direction_couplings=[("z", "z")],field_directions=[('x'),('z')], pbc=True, coupling_values=[1.],field_values=[1.,h0[sample % args.n_initial_field]] size=size
+        )
+        
     # define the instance
     ham = [ham0.qutip_op]
 
     # define the time dependent part
-
-    # initialize c0 and sigma
-    if sample % args.different_gaussians == 0:
-        c0 = np.random.uniform(0, args.c)
-        sigma = np.random.uniform(1, args.sigma)
-        corr = c0 * np.exp(-1 * ((t[None, :] - t[:, None]) ** 2) / (2 * sigma ** 2))
-        e, l = np.linalg.eigh(corr)
-
     # initialize the driving
+    driving.get_instance()
+    
+    
     if args.noise_type == "uniform":
+        # initialize c0 and sigma
+        if sample % args.different_gaussians == 0:
+            c0 = np.random.uniform(0, args.c)
+            sigma = np.random.uniform(1, args.sigma)
+            corr = c0 * np.exp(-1 * ((t[None, :] - t[:, None]) ** 2) / (2 * sigma ** 2))
+            e, l = np.linalg.eigh(corr)
         driving = DrivingUniformGaussian(
             t_resolution=t_resolution, dt=args.dt, e=e, l=l
         )
 
-    # initialize the field
-    driving.get_instance()
+    # for an inhomogeneous field a loop runs
+    # for each site
     for i in range(size):
+        # gaussian type
         if args.noise_type == "gaussian":
             driving = Driving(
                 t_resolution=t_resolution,
@@ -303,33 +311,37 @@ for sample in trange(n_dataset):
                 sigma=sigma[sample % args.different_gaussians],
                 c=c[sample % args.different_gaussians],
             )
+        # periodic type
         elif args.noise_type == "periodic":
             driving = DrivingPeriodic(
                 t_resolution=t_resolution, dt=args.dt, a=args.a, omega=args.omega
             )
 
         hs[sample, :, i] = driving.h
+        # we add the time dependent term in the Hamiltonian
+        # following the Qutip solver requests
         ham.append([obs[i], driving.field])
 
-    # interaction hamiltonian at time 0
-    ham1 = SpinHamiltonian(
-        field_directions=["x"], pbc=False, field_values=[driving.h[0]], size=size
-    )
-
-    # compute the initial state
-    eng, psi = np.linalg.eigh(ham0.qutip_op + ham1.qutip_op)
+    
+    # compute the initial state as groundstate of H0
+    eng, psi = np.linalg.eigh(ham0.qutip_op)
     psi0 = counting_multiplicity(psi, eng)
+    # we take into account symmetries even if there shouldn't be 
+    # degeneracies
     psi0 = qutip.Qobj(psi0, shape=psi0.shape, dims=([[2 for i in range(size)], [1]]))
 
-    # print("obs=", obs)
-    output = qutip.sesolve(ham, psi0, t, e_ops=obs)
-    # this is a shame
+    # solver
+    output = qutip.sesolve(ham, psi0, t, e_ops=obs+obs_x)
+    # upload the outcomes in z (density) and x
     for i in range(size):
         z[sample, :, i] = output.expect[i]
+    for i in range(size):
+        x[sample,:,i]=output.expect[size+i]
 
+    # save it every args.checkpoint times
     if sample % args.checkpoint == 0:
-        np.savez(file_name, density=z, potential=hs, time=t)
+        np.savez(file_name, density=z, potential=hs, time=t,transverse_magnetization=x)
 
-np.savez(file_name, density=z, potential=hs, time=t)
+# global save at the end
+np.savez(file_name, density=z, potential=hs, time=t,transverse_magnetization=x)
 
-# options = Options(num_cpus=4, atol=1e-20)
