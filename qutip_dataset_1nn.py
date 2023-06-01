@@ -146,6 +146,13 @@ parser.add_argument(
     default=1.0,
 )
 
+parser.add_argument(
+    "--rate",
+    type=float,
+    help="rate of the evolution of the disorder annealing (default=1.0)",
+    default=1.0,
+)
+
 args = parser.parse_args()
 
 
@@ -220,6 +227,36 @@ class DrivingPeriodic:
         return self.h[int(t / self.dt) - 1]
 
 
+class DrivingDisorder:
+    def __init__(
+        self,
+        t_resolution: int,
+        dt: float,
+        h_init: np.ndarray,
+        h_final: np.ndarray,
+        rate: float,
+        i: int,
+    ) -> None:
+        self.t_resolution = t_resolution
+        self.dt = dt
+
+        time = np.linspace(
+            -self.dt * self.t_resolution / 2,
+            self.dt * self.t_resolution / 2,
+            self.t_resolution,
+        )
+
+        self.h = (
+            h_init[None, :] * (1 - np.tanh(time * rate)[:, None]) / 2
+            + h_final[None, :] * (1 + np.tanh(time * rate)[:, None]) / 2
+        )  # initial field
+
+        self.i = i
+
+    def field(self, t: float, args) -> Union[np.ndarray, float]:
+        return self.h[int(t / self.dt) - 1, self.i]
+
+
 # size of the system
 size: int = args.size
 
@@ -247,54 +284,80 @@ else:
 n_dataset = args.n_dataset
 
 
-file_name = (
-    args.file_name
-    + f"_size_{size}_tf_{args.tf}_dt_{args.dt}_sigma_1_{args.sigma}_c_0_{args.c}_initial_field_{args.n_initial_field}_n_dataset_{n_dataset}"
-)
+if args.noise_type == "periodic":
+    file_name = (
+        args.file_name
+        + f"_size_{size}_tf_{args.tf}_dt_{args.dt}_a_{args.a}_omega_{args.omega}_initial_field_{args.n_initial_field}_n_dataset_{n_dataset}"
+    )
+elif args.noise_type == "disorder":
+    file_name = (
+        args.file_name
+        + f"_size_{size}_tf_{args.tf}_dt_{args.dt}_rate_{args.rate}_h_{np.e:.1f}_n_dataset_{n_dataset}"
+    )
 
 # initialization of the return value
 z: np.ndarray = np.zeros((n_dataset, t_resolution, size))
 hs: np.ndarray = np.zeros((n_dataset, t_resolution, size))
-x: np.ndarray =np.zeros((n_dataset, t_resolution, size))
-
+x: np.ndarray = np.zeros((n_dataset, t_resolution, size))
 
 
 # define the initial exp value
 obs: List[qutip.Qobj] = []
-obs_x: List[qutip.Qobj]=[]
+obs_x: List[qutip.Qobj] = []
 for i in range(size):
-    z_op= SpinOperator(index=[("z", i)], coupling=[1.0], size=size, verbose=1)
+    z_op = SpinOperator(index=[("z", i)], coupling=[1.0], size=size, verbose=1)
     # print(f"x[{i}]=", x.qutip_op, "\n")
-    x_op=SpinOperator(index=[("x", i)], coupling=[1.0], size=size, verbose=1)
+    x_op = SpinOperator(index=[("x", i)], coupling=[1.0], size=size, verbose=1)
     obs.append(z_op.qutip_op)
     obs_x.append(x_op.qutip_op)
 
-# initial constant field
-h0=np.random.uniform(-5,5,size=(args.n_initial_field))
-
 
 for sample in trange(n_dataset):
-    
+    # initial constant field
+    h0 = np.random.uniform(0, np.e, size=size)
+    hf = np.random.uniform(0, np.e, size=size)
     # define the initial time independent Hamiltonian
-    if sample % args.n_initial_field ==0:
+
+    if args.noise_type == "gaussian" and sample % args.n_initial_field == 0:
         ham0 = SpinHamiltonian(
-        direction_couplings=[("z", "z")],field_directions=[('x'),('z')], pbc=True, coupling_values=[1.],field_values=[1.,h0[sample % args.n_initial_field]] size=size
+            direction_couplings=[("z", "z")],
+            field_directions=[("x")],
+            pbc=True,
+            coupling_values=[1.0],
+            field_values=[1.0],
+            size=size,
         )
-        
+        # define the term \sum_i h_i z_i
+        ham_ext = SpinOperator(
+            index=[("z", i) for i in range(size)], coupling=h0, size=size
+        )
+
+    elif args.noise_type == "disorder":
+        ham0 = SpinHamiltonian(
+            direction_couplings=[("z", "z")],
+            field_directions=[("x")],
+            pbc=True,
+            coupling_values=[1.0],
+            field_values=[1.0],
+            size=size,
+        )
+        # define the term \sum_i h_i z_i
+        ham_ext = SpinOperator(
+            index=[("z", i) for i in range(size)], coupling=h0, size=size
+        )
+
     # define the instance
     ham = [ham0.qutip_op]
 
     # define the time dependent part
     # initialize the driving
-    driving.get_instance()
-    
-    
+
     if args.noise_type == "uniform":
         # initialize c0 and sigma
         if sample % args.different_gaussians == 0:
             c0 = np.random.uniform(0, args.c)
             sigma = np.random.uniform(1, args.sigma)
-            corr = c0 * np.exp(-1 * ((t[None, :] - t[:, None]) ** 2) / (2 * sigma ** 2))
+            corr = c0 * np.exp(-1 * ((t[None, :] - t[:, None]) ** 2) / (2 * sigma**2))
             e, l = np.linalg.eigh(corr)
         driving = DrivingUniformGaussian(
             t_resolution=t_resolution, dt=args.dt, e=e, l=l
@@ -311,37 +374,56 @@ for sample in trange(n_dataset):
                 sigma=sigma[sample % args.different_gaussians],
                 c=c[sample % args.different_gaussians],
             )
+
+            hs[sample, :, i] = driving.h + h0[sample % args.n_initial_field]
+            # we add the time dependent term in the Hamiltonian
+            # following the Qutip solver requests
+            ham.append([obs[i], driving.field])
+
         # periodic type
         elif args.noise_type == "periodic":
             driving = DrivingPeriodic(
                 t_resolution=t_resolution, dt=args.dt, a=args.a, omega=args.omega
             )
 
-        hs[sample, :, i] = driving.h
-        # we add the time dependent term in the Hamiltonian
-        # following the Qutip solver requests
-        ham.append([obs[i], driving.field])
+            hs[sample, :, i] = driving.h + h0[sample % args.n_initial_field]
+            # we add the time dependent term in the Hamiltonian
+            # following the Qutip solver requests
+            ham.append([obs[i], driving.field])
 
-    
+        elif args.noise_type == "disorder":
+            driving = DrivingDisorder(
+                t_resolution=t_resolution,
+                dt=args.dt,
+                h_init=h0,
+                h_final=hf,
+                rate=args.rate,
+                i=i,
+            )
+
+            hs[sample, :, :] = driving.h
+            # we add the time dependent term in the Hamiltonian
+            # following the Qutip solver requests
+            ham.append([obs[i], driving.field])
+
     # compute the initial state as groundstate of H0
-    eng, psi = np.linalg.eigh(ham0.qutip_op)
+    eng, psi = np.linalg.eigh(ham0.qutip_op + ham_ext.qutip_op)
     psi0 = counting_multiplicity(psi, eng)
-    # we take into account symmetries even if there shouldn't be 
+    # we take into account symmetries even if there shouldn't be
     # degeneracies
     psi0 = qutip.Qobj(psi0, shape=psi0.shape, dims=([[2 for i in range(size)], [1]]))
 
     # solver
-    output = qutip.sesolve(ham, psi0, t, e_ops=obs+obs_x)
+    output = qutip.sesolve(ham, psi0, t, e_ops=obs + obs_x)
     # upload the outcomes in z (density) and x
     for i in range(size):
         z[sample, :, i] = output.expect[i]
     for i in range(size):
-        x[sample,:,i]=output.expect[size+i]
+        x[sample, :, i] = output.expect[size + i]
 
     # save it every args.checkpoint times
     if sample % args.checkpoint == 0:
-        np.savez(file_name, density=z, potential=hs, time=t,transverse_magnetization=x)
+        np.savez(file_name, density=z, potential=hs, time=t, transverse_magnetization=x)
 
 # global save at the end
-np.savez(file_name, density=z, potential=hs, time=t,transverse_magnetization=x)
-
+np.savez(file_name, density=z, potential=hs, time=t, transverse_magnetization=x)
