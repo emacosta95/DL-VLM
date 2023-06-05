@@ -88,11 +88,13 @@ class AdiabaticTDDFT:
         h: torch.tensor,
         omega: float,
         device: str,
-        samples_for_projection: torch.Tensor,
+        with_grad: bool == True,
     ) -> None:
         # self.psi = psi0.to(device=device, dtype=torch.complex128)
         self.h = h.to(device=device)
-        self.functional = model.double().to(device=device)
+        self.with_grad = with_grad
+        if self.with_grad:
+            self.functional = model.double().to(device=device)
         self.grad = 0.0
         self.omega = omega
         self.x_operator = torch.tensor(
@@ -106,7 +108,6 @@ class AdiabaticTDDFT:
         )
 
         # restore the gradient
-        self.sample_for_projection = samples_for_projection
         self.gradient_old = torch.ones(h.shape[-1])
 
         # save the f values
@@ -134,7 +135,9 @@ class AdiabaticTDDFT:
         w = w.to(dtype=torch.double)
         w.requires_grad_(True)
         f = self.functional(w.view(1, -1))  # batch size form 1 x l
+        # self.omega = f[1].detach().mean().clone()
         f = f[0].sum(-1)
+
         self.f_values = f.clone()
         f.backward(torch.ones_like(f))
         with torch.no_grad():
@@ -148,7 +151,8 @@ class AdiabaticTDDFT:
 
     def time_step(self, dt: float, t: float, psi: torch.Tensor):
         # non linear term
-        self.gradient_descent_step(psi=psi)
+        if self.with_grad:
+            self.gradient_descent_step(psi=psi)
 
         # Crank-Nicholson algorithm
         field = self.h[int(t / dt)] + self.grad
