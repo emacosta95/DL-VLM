@@ -81,37 +81,37 @@ class QuantumAnnealing:
             t_bar.refresh()
 
 
+# extend for batch data
 class AdiabaticTDDFT:
     def __init__(
         self,
         model: torch.nn.Module,
-        h: torch.tensor,
+        h: torch.Tensor,
         omega: float,
         device: str,
         with_grad: bool == True,
+        # mixed_state_option: bool == True,
     ) -> None:
-        # self.psi = psi0.to(device=device, dtype=torch.complex128)
-        self.h = h.to(device=device)
-        self.with_grad = with_grad
+        # dimension of h = N_batch x time x size
+        self.h: torch.Tensor = h.to(device=device)
+
+        self.with_grad: bool = with_grad
         if self.with_grad:
-            self.functional = model.double().to(device=device)
-        self.grad = 0.0
-        self.omega = omega
-        self.x_operator = torch.tensor(
+            self.functional: nn.Module = model.double().to(device=device)
+        self.grad: torch.Tensor = 0.0
+        self.omega: float = omega
+        self.x_operator: torch.Tensor = torch.tensor(
             [[0, 1], [1, 0]], dtype=torch.complex128, device=device
         )
-        self.z_operator = torch.tensor(
+        self.z_operator: torch.Tensor = torch.tensor(
             [[-1, 0], [0, 1]], dtype=torch.complex128, device=device
         )
-        self.identity = torch.tensor(
+        self.identity: torch.Tensor = torch.tensor(
             [[1, 0], [0, 1]], dtype=torch.complex128, device=device
         )
 
-        # restore the gradient
-        self.gradient_old = torch.ones(h.shape[-1])
-
         # save the f values
-        self.f_values = 0.0
+        self.f_values: torch.Tensor = 0.0
 
     def gradient_descent_step(self, psi: torch.Tensor) -> tuple:
         """This routine computes the step of the gradient using both the positivity and the nomralization constrain
@@ -125,19 +125,18 @@ class AdiabaticTDDFT:
             phi[pt.tensor]: [the wavefunction evaluated after the step]
         """
 
-        # print(torch.typename(self.psi), torch.typename(self.sigmaz))
-        # self.psi = self.psi.to(torch.double
-        phi = psi.clone()
+        # psi has a N_batch x size x 2 dimension
+        phi: torch.Tensor = psi.clone()
 
         w = torch.real(
-            torch.conj(phi[:, 0]) * phi[:, 0] - torch.conj(phi[:, 1]) * phi[:, 1]
+            torch.conj(phi[:, :, 0]) * phi[:, :, 0]
+            - torch.conj(phi[:, :, 1]) * phi[:, :, 1]
         )
         w = w.to(dtype=torch.double)
         w.requires_grad_(True)
-        f = self.functional(w.view(1, -1))  # batch size form 1 x l
+        f = self.functional(w)  # batch size form 1 x l
         # self.omega = f[1].detach().mean().clone()
-        f = f[0].sum(-1)
-
+        f = f[:, 0].sum(-1)
         self.f_values = f.clone()
         f.backward(torch.ones_like(f))
         with torch.no_grad():
@@ -155,30 +154,34 @@ class AdiabaticTDDFT:
             self.gradient_descent_step(psi=psi)
 
         # Crank-Nicholson algorithm
-        field = self.h[int(t / dt)] + self.grad
+        field = self.h[:, int(t / dt)] + self.grad
+
         field = field.to(dtype=torch.complex128)
-        ext_field = field[:, None, None] * self.z_operator[None, :, :]
-        unitary_op = self.identity[None, :, :] + 0.5j * dt * (
-            self.omega * self.x_operator[None, :, :] + ext_field
+        ext_field = field[:, :, None, None] * self.z_operator[None, None, :, :]
+        unitary_op = self.identity[None, None, :, :] + 0.5j * dt * (
+            self.omega * self.x_operator[None, None, :, :] + ext_field
         )
-        unitary_op_star = self.identity[None, :, :] - 0.5j * dt * (
-            self.omega * self.x_operator[None, :, :] + ext_field
+        unitary_op_star = self.identity[None, None, :, :] - 0.5j * dt * (
+            self.omega * self.x_operator[None, None, :, :] + ext_field
         )
         unitary = torch.einsum(
-            "iab,ibc->iac", torch.linalg.inv(unitary_op), unitary_op_star
+            "niab,nibc->niac", torch.linalg.inv(unitary_op), unitary_op_star
         )
-        psi = torch.einsum("iab,ib->ia", unitary, psi)
+        psi = torch.einsum("niab,nib->nia", unitary, psi)
 
         # impose the norm
-        psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
+        psi = psi / torch.linalg.norm(psi, dim=-1)[:, :, None]
 
         # self.psi = self.psi / torch.norm(self.psi, dim=-1)[:, None]
 
         return psi
 
     def compute_magnetization(self, psi: torch.Tensor):
-        z = torch.conj(psi[:, 0]) * psi[:, 0] - torch.conj(psi[:, 1]) * psi[:, 1]
-        return z.view(-1)
+        z = (
+            torch.conj(psi[:, :, 0]) * psi[:, :, 0]
+            - torch.conj(psi[:, :, 1]) * psi[:, :, 1]
+        )
+        return z
 
 
 # class AdiabaticTDDFTNN(nn.Module):
