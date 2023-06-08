@@ -27,11 +27,13 @@ h_qutip = data["potential"]
 time = data["time"]
 
 h_torch = torch.from_numpy(h_qutip)
+z_torch = torch.from_numpy(z_qutip)
+print(z_torch.shape)
 print(h_torch.shape)
 # %% initialize psi
 psi = torch.zeros(size=(1, size, 2), dtype=torch.complex128)
-psi[:, :, 1] = 1.0
-psi[:, :, 0] = 0.0
+psi[:, :, 1] = (1 - z_torch[0, 0, :]) / 2  # it's the same for everybody
+psi[:, :, 0] = (1 + z_torch[0, 0, :]) / 2
 
 print(psi[:, :, 0] * psi[:, :, 0].conj() - psi[:, :, 1] * psi[:, :, 1].conj())
 
@@ -45,7 +47,9 @@ model.eval()
 print(model)
 
 # %%
-run1 = AdiabaticTDDFT(model=model, h=h_torch, omega=1.0, device="cpu", with_grad=True)
+run1 = AdiabaticTDDFT(
+    model=model, h=h_torch, omega=1.0, device="cpu", with_grad=True, uniform_option=True
+)
 
 # %% Run
 z_adiabatic = torch.zeros_like(h_torch)
@@ -63,7 +67,7 @@ for t in t_bar:
 
 
 np.savez(
-    "data/AdTDDFT_results/AdTDDFT_uniform_070623",
+    "data/AdTDDFT_results/AdTDDFT_uniform_080623",
     density=z_adiabatic.detach().numpy(),
     density_target=z_qutip,
     potential=h_qutip,

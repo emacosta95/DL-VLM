@@ -90,6 +90,7 @@ class AdiabaticTDDFT:
         omega: float,
         device: str,
         with_grad: bool == True,
+        uniform_option: bool == False,
         # mixed_state_option: bool == True,
     ) -> None:
         # dimension of h = N_batch x time x size
@@ -112,6 +113,9 @@ class AdiabaticTDDFT:
 
         # save the f values
         self.f_values: torch.Tensor = 0.0
+
+        # uniform option global variable
+        self.uniform_option = uniform_option
 
     def gradient_descent_step(self, psi: torch.Tensor) -> tuple:
         """This routine computes the step of the gradient using both the positivity and the nomralization constrain
@@ -142,6 +146,13 @@ class AdiabaticTDDFT:
         with torch.no_grad():
             grad = w.grad
             self.grad = grad.clone()
+            if self.uniform_option:
+                # uniform condition
+                self.grad = (
+                    self.grad.mean(-1)[:, None]
+                    * torch.ones_like(self.grad[0, :])[None, :]
+                )
+
             # projection = pca_gradient(
             #    samples=self.sample_for_projection, gradient=self.grad
             # )

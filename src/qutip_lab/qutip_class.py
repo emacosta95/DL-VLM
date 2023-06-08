@@ -4,6 +4,7 @@ from qutip import operators, entropy_vn
 from typing import List, Tuple, Optional, Type, Dict
 import numpy as np
 
+
 # stackoverflow https://stackoverflow.com/questions/5389507/iterating-over-every-two-elements-in-a-list
 def pairwise(iterable):
     "s -> (s0, s1), (s2, s3), (s4, s5), ..."
@@ -59,7 +60,6 @@ class ManyBodyQutipOperator:
         self._verbose = value
 
     def __get_qutip_op(self, local_op: List[List[qutip.Qobj]]):
-
         if local_op is not (None):
             for i, ops in enumerate(local_op):
                 for j, op in enumerate(ops):
@@ -94,7 +94,6 @@ class SpinOperator(ManyBodyQutipOperator):
         size: int,
         verbose: int = 0,
     ) -> None:
-
         super().__init__()
 
         # dictionary for the conversion string to local operator
@@ -153,8 +152,7 @@ class SpinOperator(ManyBodyQutipOperator):
 
     @qutip_op.setter
     def qutip_op(self, mbop: qutip.Qobj):
-
-        if mbop.data.shape != (2 ** self.size, 2 ** self.size):
+        if mbop.data.shape != (2**self.size, 2**self.size):
             raise ValueError(
                 f"size mismatch -> l={self.size} effective l={mbop.data.shape}"
             )
@@ -172,7 +170,6 @@ class SpinOperator(ManyBodyQutipOperator):
     ):
         self._description: str = "(couplings, operator) -> \n"
         for k, tuple_indices in enumerate(self.index):
-
             # initialize the description
             self._description = (
                 self._description + f" ( {self.coupling[k]} ,  {tuple_indices} ) \n"
@@ -183,7 +180,6 @@ class SpinOperator(ManyBodyQutipOperator):
             op_dict: Dict = {}
             indices: List = []
             for direction, idx in pairwise(tuple_indices):
-
                 # define the given
                 # local label operator
 
@@ -253,7 +249,6 @@ class FockOperator(ManyBodyQutipOperator):
         size: int,
         exc_numb: Optional[int] = None,
     ) -> None:
-
         super().__init__()
 
         self.exc_numb = exc_numb
@@ -307,8 +302,7 @@ class FockOperator(ManyBodyQutipOperator):
 
     @qutip_op.setter
     def qutip_op(self, mbop: qutip.Qobj):
-
-        if mbop.data.shape != (self.exc_numb ** self.size, self.exc_numb ** self.size):
+        if mbop.data.shape != (self.exc_numb**self.size, self.exc_numb**self.size):
             raise ValueError(
                 f"size mismatch -> l={self.size} effective l={mbop.data.shape}"
             )
@@ -329,7 +323,6 @@ class FockOperator(ManyBodyQutipOperator):
     ):
         self._description: str = "(couplings, operator) -> \n"
         for k, tuple_indices in enumerate(self.index):
-
             # initialize the description
             self._description = (
                 self._description + f" ( {self.coupling[k]} ,  {tuple_indices} ) \n"
@@ -340,7 +333,6 @@ class FockOperator(ManyBodyQutipOperator):
             op_dict: Dict = {}
             indices: List = []
             for direction, idx in pairwise(tuple_indices):
-
                 # define the given
                 # local label operator
 
@@ -410,7 +402,6 @@ class Hamiltonian(ManyBodyQutipOperator):
         ext_fields: Optional[List[ManyBodyQutipOperator]] = None,
         extra_terms: Optional[List[ManyBodyQutipOperator]] = None,
     ) -> None:
-
         super().__init__()
         # size attribute
         self.size = size
@@ -434,7 +425,6 @@ class Hamiltonian(ManyBodyQutipOperator):
         self._h_ao: List = []
         if ext_fields != None:
             for m, h in enumerate(ext_fields):
-
                 if not (
                     isinstance(h, ManyBodyQutipOperator) or isinstance(h, SpinOperator)
                 ):
@@ -453,7 +443,6 @@ class Hamiltonian(ManyBodyQutipOperator):
         self._j_ao: List = []
         if couplings != None:
             for m, j in enumerate(couplings):
-
                 if not (
                     isinstance(j, ManyBodyQutipOperator) or isinstance(j, SpinOperator)
                 ):
@@ -467,12 +456,11 @@ class Hamiltonian(ManyBodyQutipOperator):
     def others_ao(self):
         return self._others_ao
 
-    @h_ao.setter
+    @others_ao.setter
     def others_ao(self, other_terms: List[qutip.Qobj]):
         self._others_ao: List = []
         if other_terms != None:
             for m, o in enumerate(other_terms):
-
                 if not (
                     isinstance(o, ManyBodyQutipOperator) or isinstance(o, SpinOperator)
                 ):
@@ -483,7 +471,6 @@ class Hamiltonian(ManyBodyQutipOperator):
                 self._others_ao.append(o)
 
     def __str__(self) -> str:
-
         description = "Coupling Terms: \n"
         for ham_j in self.j_ao:
             description = description + f"{ham_j}"
@@ -498,7 +485,6 @@ class Hamiltonian(ManyBodyQutipOperator):
         return description
 
     def get_qutip_op(self):
-
         if (
             self.j_ao is not (None)
             or self.h_ao is not (None)
@@ -532,7 +518,6 @@ class SpinHamiltonian(Hamiltonian):
         j_couplings: Optional[List[ManyBodyQutipOperator]] = None,
         ext_fields: Optional[List[ManyBodyQutipOperator]] = None,
     ) -> None:
-
         super().__init__(size=size)
 
         # Fast Clean Transverse Ising Chain with nearest neighbourhoods
@@ -557,7 +542,6 @@ class SpinHamiltonian(Hamiltonian):
         field_values: Optional[List[float]],
         ext_fields: List[ManyBodyQutipOperator],
     ):
-
         h_ao: List[ManyBodyQutipOperator] = []
         if field_values is not (None):
             for m, h in enumerate(field_values):
@@ -626,7 +610,6 @@ class SteadyStateSolver:
         hamiltonian: ManyBodyQutipOperator,
         dissipative_ops: List[ManyBodyQutipOperator],
     ) -> None:
-
         # parameters
         self.hamiltonian = hamiltonian
         self.dissipative_ops = dissipative_ops
