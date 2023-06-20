@@ -53,7 +53,7 @@ run1 = AdiabaticTDDFT(
 
 # %% Run
 z_adiabatic = torch.zeros_like(h_torch)
-z_adiabatic[:, 0, :] = 0.0
+z_adiabatic[:, 0, :] = z_torch[:, 0, :]
 grad = torch.zeros_like(z_adiabatic)
 f = torch.zeros((h_torch.shape[0], h_torch.shape[1]))
 t_bar = tqdm(time[:-1])
@@ -67,7 +67,7 @@ for t in t_bar:
 
 
 np.savez(
-    "data/AdTDDFT_results/AdTDDFT_uniform_080623",
+    "data/AdTDDFT_results/AdTDDFT_uniform_090623",
     density=z_adiabatic.detach().numpy(),
     density_target=z_qutip,
     potential=h_qutip,

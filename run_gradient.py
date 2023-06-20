@@ -1,0 +1,52 @@
+from src.training.models_adiabatic import Energy_XXZX
+from src.gradient_descent import GradientDescent
+import torch
+import numpy as np
+
+data = np.load(
+    "data/kohm_sham_approach/disorder/reduction_dataset_h_2.7_omega_2.7_j_1_1nn_n_150000.npz"
+)
+
+ndata = 1000
+
+z = data["density"]
+f = data["density_F"]
+h = data["potential"]
+e = data["energy"]
+
+z_torch = torch.from_numpy(z[:ndata])
+f_torch = torch.from_numpy(f[:ndata])
+h_torch = torch.from_numpy(h[:ndata])
+e_torch = torch.from_numpy(e[:ndata])
+
+
+model = torch.load(
+    "model_rep/kohm_sham/disorder/model_zzxz_reduction_f_h_2.7_omega_2.7_j_1_1nn_150k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    map_location="cpu",
+)
+model.eval()
+
+
+gd = gd = GradientDescent(
+    n_instances=100,
+    run_name="bla",
+    loglr=-3,
+    n_init=z_torch,
+    cut=2,
+    n_ensambles=1,
+    model_name="/kohm_sham/disorder/model_zzxz_reduction_f_h_2.7_omega_2.7_j_1_1nn_150k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    target_path="data/kohm_sham_approach/disorder/reduction_dataset_h_2.7_omega_2.7_j_1_1nn_n_150000.npz",
+    epochs=20000,
+    variable_lr=False,
+    early_stopping=False,
+    L=8,
+    resolution=1,
+    final_lr=10,
+    num_threads=10,
+    device="cpu",
+    seed=235,
+    logdiffsoglia=10,
+    save=True,
+)
+
+gd.run()

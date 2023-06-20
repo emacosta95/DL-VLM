@@ -4,66 +4,14 @@ from numpy.lib.mixins import _inplace_binary_method
 import torch as pt
 import torch.nn as nn
 import numpy as np
-from src.training.models import Energy
+from src.training.models_adiabatic import Energy_XXZX
 from src.training.utils import initial_ensamble_random
-from tqdm import tqdm, trange
+from tqdm.notebook import tqdm, trange
 import matplotlib.pyplot as plt
-from scipy import fft, ifft
 import random
+from typing import Optional
 
 device = pt.device("cuda" if pt.cuda.is_available() else "cpu")
-
-
-def smooth_grad(grad: pt.tensor, cut: int) -> pt.tensor:
-    """This routine is a filter of the gradient function.
-
-    Arguments:
-
-    grad [pt.tensor]: the gradient of the functional respect to phi
-    cut [int]: the cutoff in the momentum space (k-space)
-
-
-    Returns:
-        grad[pt.tensor]: the filtered gradient
-    """
-
-    grad = grad.detach().numpy()
-    grad_fft = fft(grad, axis=1)
-    grad_fft[:, cut:128] = 0
-    grad_fft[:, -128 : -1 * cut] = 0
-
-    new_grad = ifft(grad_fft, axis=1)
-    grad = pt.tensor(np.real(new_grad), dtype=pt.double)
-
-    return grad
-
-
-def exact_energy_functional(dens: np.array, pot: np.array):
-    """This function compute the analytical energy functional given by the 1prt kinetic energy functional + the external potential functional
-
-    Argument:
-
-        dens[np.array]: the ensamble of the density profiles dim=[number of istances, resolution]
-
-        pot[np.array]: the potential dim=[resolution]
-
-    Return[np.array]:
-
-        the ensamble of the theoretical energies
-
-    """
-
-    dx = 14 / 256
-    space = np.linspace(0, 14, 256)
-    phi = np.sqrt(dens)
-    grad_phi = np.gradient(phi, space, axis=1)
-
-    f_1 = np.einsum("ai,ai->a", grad_phi, grad_phi) * dx
-    v_n = np.einsum("ai,i->a", dens, pot)
-    t_n = f_1
-    eng = t_n + v_n * dx
-
-    return eng
 
 
 # %% THE GRADIENT DESCENT CLASS
@@ -78,7 +26,8 @@ class GradientDescent:
         logdiffsoglia: int,
         n_ensambles: int,
         target_path: str,
-        model_name: str,
+        energy: nn.Module,
+        run_name: str,
         epochs: int,
         variable_lr: bool,
         final_lr: float,
@@ -88,8 +37,10 @@ class GradientDescent:
         seed: int,
         num_threads: int,
         device: str,
-        n_init:np.array,
+        n_init: np.array,
+        save: bool,
     ):
+        self.save = save
 
         self.device = device
         self.num_threads = num_threads
@@ -106,27 +57,28 @@ class GradientDescent:
 
         self.loglr = loglr
         if self.early_stopping:
-            self.lr = (10 ** loglr) * pt.ones(n_ensambles, device=self.device)
+            self.lr = (10**loglr) * pt.ones(n_ensambles, device=self.device)
         else:
-            self.lr = pt.tensor(10 ** loglr, device=self.device)
+            self.lr = pt.tensor(10**loglr, device=self.device)
         self.cut = cut
 
         self.epochs = epochs
-        self.logdiffsoglia=logdiffsoglia
-        self.diffsoglia = 10 ** logdiffsoglia
+        self.logdiffsoglia = logdiffsoglia
+        self.diffsoglia = 10**logdiffsoglia
         self.n_ensambles = n_ensambles
 
         self.n_target = np.load(target_path)["density"]
         self.v_target = np.load(target_path)["potential"]
         self.e_target = np.load(target_path)["energy"]
 
-        self.n_init=n_init
+        self.n_init = n_init
 
-        self.model_name = model_name
+        self.energy = energy
+        self.run_name = run_name
 
         if self.variable_lr:
             self.ratio = pt.exp(
-                (1 / epochs) * pt.log(pt.tensor(final_lr) / (10 ** loglr))
+                (1 / epochs) * pt.log(pt.tensor(final_lr) / (10**loglr))
             )
 
         # the set of the loaded data
@@ -160,27 +112,18 @@ class GradientDescent:
 
         # loading the model
         print("loading the model...")
-        model = pt.load(
-            "model_rep/" + self.model_name,
-            map_location=pt.device(self.device),
-        )
-        model = model.to(device=self.device)
-        model.eval()
-
-
+        self.energy = self.energy.to(device=self.device)
+        self.energy.eval()
         # starting the cycle for each instance
         print("starting the cycle...")
         for idx in trange(0, self.n_instances):
-
             # initialize phi
             phi = self.initialize_phi()
             print(f"is leaf={phi.is_leaf}")
 
             # compute the gradient descent
             # for a single target sample
-            self._single_gradient_descent(phi=phi, idx=idx, model=model)
-
-    
+            self._single_gradient_descent(phi=phi, idx=idx)
 
     def initialize_phi(self) -> pt.tensor:
         """This routine initialize the phis using the average decomposition of the dataset (up to now, the best initialization ever found)
@@ -192,26 +135,28 @@ class GradientDescent:
         # sqrt of the initial configuration
         if self.n_ensambles != 1:
             # initialize with the random angles
-            if self.logdiffsoglia==-10:
-                print('train init!')
-                idxs=pt.randint(0,10000,(self.n_ensambles,))
-                m_init=[self.n_init[idx] for idx in idxs]
-                m_init=pt.tensor(m_init,dtype=pt.double)
+            if self.logdiffsoglia == -10:
+                print("train init!")
+                idxs = pt.randint(0, 10000, (self.n_ensambles,))
+                m_init = [self.n_init[idx] for idx in idxs]
+                m_init = pt.tensor(m_init, dtype=pt.double)
                 phi = pt.acos(m_init)
             else:
-                m_init=1-2*pt.rand((self.n_ensambles,self.n_target.shape[-1]))
+                m_init = 1 - 2 * pt.rand((self.n_ensambles, 2, self.n_target.shape[-1]))
                 phi = pt.acos(m_init)
         elif self.n_ensambles == 1:
             # initialize with the flat density profile
-            if self.logdiffsoglia==-10:
-                print('train init!')
-                idxs=pt.randint(0,10000,(self.n_ensambles,))
-                m_init=[self.n_init[idx] for idx in idxs]
-                m_init=pt.tensor(m_init,dtype=pt.double)
-                phi = pt.acos(m_init)
+
+            if len(self.n_init.shape) == 2:
+                m_init = pt.mean(pt.tensor(self.n_init, dtype=pt.double), dim=0).view(
+                    1, self.n_init.shape[-1]
+                )
             else:
-                m_init=pt.mean(pt.tensor(self.n_init,dtype=pt.double),dim=0).view(1,self.n_init.shape[-1])
-                phi = pt.acos(m_init)
+                m_init = pt.mean(pt.tensor(self.n_init, dtype=pt.double), dim=0).view(
+                    1, 2, self.n_init.shape[-1]
+                )
+            phi = pt.acos(m_init)
+            print(phi.shape)
         # initialize in double and device
         phi = phi.to(dtype=pt.double)
         phi = phi.to(device=self.device)
@@ -220,9 +165,7 @@ class GradientDescent:
 
         return phi
 
-    def _single_gradient_descent(
-        self, phi: pt.tensor, idx: int, model: nn.Module
-    ) -> tuple:
+    def _single_gradient_descent(self, phi: pt.tensor, idx: int) -> tuple:
         """This routine compute the gradient descent for an energy functional
         with external potential given by the idx-th instance and kinetic energy functional determined by model.
 
@@ -243,9 +186,6 @@ class GradientDescent:
 
         n_ref = self.n_target[idx]
         pot = pt.tensor(self.v_target[idx], device=self.device)
-        energy = Energy(model, pot)
-
-        energy = energy.to(device=self.device)
 
         history = pt.tensor([], device=self.device)
 
@@ -255,15 +195,14 @@ class GradientDescent:
 
         # refresh the lr every time
         if self.early_stopping:
-            self.lr = (10 ** self.loglr) * pt.ones(self.n_ensambles, device=self.device)
+            self.lr = (10**self.loglr) * pt.ones(self.n_ensambles, device=self.device)
         else:
-            self.lr = pt.tensor(10 ** self.loglr, device=self.device)
+            self.lr = pt.tensor(10**self.loglr, device=self.device)
 
         # start the gradient descent
-        t_iterator=tqdm(range(self.epochs))
+        t_iterator = tqdm(range(self.epochs))
         for epoch in t_iterator:
-
-            eng, phi, grad = self.gradient_descent_step(energy=energy, phi=phi)
+            eng, phi, grad = self.gradient_descent_step(phi=phi, pot=pot)
             diff_eng = pt.abs(eng.detach() - eng_old)
 
             if self.early_stopping:
@@ -279,16 +218,17 @@ class GradientDescent:
 
             eng_old = eng.detach()
 
-            if epoch % 100 == 0:
-
-                self.checkpoints(
-                    eng=eng, phi=phi, idx=idx, history=history, epoch=epoch, grad=grad
+            if self.n_ensambles == 1:
+                t_iterator.set_description(
+                    f"eng={(eng[0].detach().cpu().numpy()-self.e_target[idx])/self.e_target[idx]:.6f} idx={idx}"
                 )
-            if self.n_ensambles==1:
-                t_iterator.set_description(f'eng={eng[0].detach().cpu().numpy()-self.e_target[idx]:.4f}')
             t_iterator.refresh()
 
-    def gradient_descent_step(self, energy: nn.Module, phi: pt.tensor) -> tuple:
+        self.checkpoints(
+            eng=eng, phi=phi, idx=idx, history=history, epoch=epoch, grad=grad
+        )
+
+    def gradient_descent_step(self, phi: pt.tensor, pot: pt.Tensor) -> tuple:
         """This routine computes the step of the gradient using both the positivity and the nomralization constrain
 
         Arguments:
@@ -301,19 +241,70 @@ class GradientDescent:
         """
 
         w = pt.cos(phi)
-
-        eng = energy(w)
+        eng = self.energy(w, pot)
 
         eng.backward(pt.ones_like(eng))
 
         with pt.no_grad():
+            grad = phi.grad
 
-            grad = phi.grad 
-
-            phi -= self.lr * grad 
+            phi -= self.lr * grad
             phi.grad.zero_()
 
         return eng.clone().detach(), phi, grad.detach().cpu().numpy()
+
+    def gradient_descent_step_ZZXZ(
+        self, energy: nn.Module, phi: pt.tensor, pot: pt.Tensor
+    ) -> tuple:
+        """This routine computes the step of the gradient using both the positivity and the nomralization constrain
+
+        Arguments:
+        energy[nn.Module]: [the energy functional]
+        phi[pt.tensor]: [the sqrt of the density profile]
+
+        Returns:
+            eng[pt.tensor]: [the energy value computed before the step]
+            phi[pt.tensor]: [the wavefunction evaluated after the step]
+        """
+
+        psi = phi.clone().detach()
+
+        psi_z = psi[:, 0, :].unsqueeze(1)
+        psi_x = psi[:, 1, :].unsqueeze(1)
+        psi_z.requires_grad_(True)
+
+        input = pt.cat((psi_z, psi_x), dim=1)
+
+        w = pt.cos(input)
+
+        eng = self.energy(w, pot)
+        eng.backward(pt.ones_like(eng))
+
+        with pt.no_grad():
+            grad_z = psi_z.grad.clone()
+            # psi -= self.lr * grad_z
+            psi_z.grad.zero_()
+
+        psi = phi.clone().detach()
+
+        psi_z = psi[:, 0, :].unsqueeze(1)
+        psi_x = psi[:, 1, :].unsqueeze(1)
+        psi_x.requires_grad_(True)
+
+        input = pt.cat((psi_z, psi_x), dim=1)
+
+        w = pt.cos(input)
+        eng2 = self.energy(w, pot)
+        eng2.backward(pt.ones_like(eng2))
+
+        with pt.no_grad():
+            grad_x = psi_x.grad.clone()
+            # psi -= self.lr * grad_z
+            psi_x.grad.zero_()
+
+            phi[:, 0] -= self.lr * (grad_z[:, 0])
+            phi[:, 1] -= self.lr * (grad_x[:, 0])
+        return eng.clone().detach(), phi, grad_z.detach().cpu().numpy()
 
     def checkpoints(
         self,
@@ -335,7 +326,7 @@ class GradientDescent:
         """
 
         # initialize the filename
-        session_name = self.model_name
+        session_name = self.run_name
 
         name_istances = f"number_istances_{self.n_instances}"
         session_name = session_name + "_" + name_istances
@@ -382,29 +373,29 @@ class GradientDescent:
         # self.min_exct_hist.append(exact_history_min)
 
         if idx == 0:
-            self.min_ns[epoch] = np.cos(phi_min.cpu().detach().numpy()) 
+            self.min_ns[epoch] = np.cos(phi_min.cpu().detach().numpy())
             self.grads[epoch] = grad_min
         else:
             self.min_ns[epoch] = np.vstack(
-                (self.min_ns[epoch], np.cos(phi_min.cpu().detach().numpy()) )
+                (self.min_ns[epoch], np.cos(phi_min.cpu().detach().numpy()))
             )
             self.grads[epoch] = np.vstack((self.grads[epoch], grad_min))
 
         # save the numpy values
-        if idx != 0:
-            np.savez(
-                "gradient_descent_ensamble_numpy/min_vs_gs_gradient_descent_"
-                + session_name,
-                min_energy=self.min_engs[epoch],
-                gs_energy=self.e_target[0 : (self.min_engs[epoch].shape[0])],
-            )
-            np.savez(
-                "gradient_descent_ensamble_numpy/min_density_" + session_name,
-                min_density=self.min_ns[epoch],
-                gs_density=self.n_target[0 : self.min_ns[epoch].shape[0]],
-                gradient=self.grads[epoch],
-            )
-            np.savez(
-                "gradient_descent_ensamble_numpy/history_" + session_name,
-                history=self.min_hist[epoch],
-            )
+        if self.save:
+            if idx != 0:
+                np.savez(
+                    "data/gd_data/eng_" + session_name,
+                    min_energy=self.min_engs[epoch],
+                    gs_energy=self.e_target[0 : (self.min_engs[epoch].shape[0])],
+                )
+                np.savez(
+                    "data/gd_data/density_" + session_name,
+                    min_density=self.min_ns[epoch],
+                    gs_density=self.n_target[0 : self.min_ns[epoch].shape[0]],
+                    gradient=self.grads[epoch],
+                )
+                np.savez(
+                    "data/gd_data/history_" + session_name,
+                    history=self.min_hist[epoch],
+                )

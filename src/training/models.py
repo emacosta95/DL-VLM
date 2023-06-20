@@ -299,7 +299,6 @@ class Causal_REDENT2D(nn.Module):
                     block.add_module(f"pooling {i+1}", nn.AvgPool2d(kernel_size=[2, 1]))
                     self.conv_downsample.append(block)
                 elif i == n_conv_layers - 1:
-
                     block = nn.Sequential()
 
                     block.add_module(
@@ -318,7 +317,6 @@ class Causal_REDENT2D(nn.Module):
                     block.add_module(f"activation_{i+1}", self.Activation)
 
                     for j in range(self.n_block_layers):
-
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
                             CausalConv2d(
@@ -507,7 +505,7 @@ class Causal_REDENT2D(nn.Module):
         x = self.forward(x).squeeze(1)
         loss = self.loss(x, y)
         return loss
-    
+
     def valid_step(self, batch: Tuple, device: str):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
@@ -699,7 +697,6 @@ class REDENTnopooling(nn.Module):
                     # block.add_module(f"pooling {i+1}", nn.#AvgPool1d(kernel_size=2))
                     self.conv_downsample.append(block)
                 elif i == n_conv_layers - 1:
-
                     block = nn.Sequential()
 
                     block.add_module(
@@ -720,7 +717,6 @@ class REDENTnopooling(nn.Module):
                     block.add_module(f"activation_{i+1}", self.Activation)
 
                     for j in range(self.n_block_layers):
-
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
                             nn.Conv1d(
@@ -875,7 +871,8 @@ class REDENTnopooling(nn.Module):
                     self.conv_upsample.append(block)
 
     def forward(self, x: torch.tensor) -> torch.tensor:
-        x = torch.unsqueeze(x, dim=1)
+        if self.in_channels == 1:
+            x = torch.unsqueeze(x, dim=1)
         outputs = []
         for block in self.conv_downsample:
             x = block(x)
@@ -891,7 +888,9 @@ class REDENTnopooling(nn.Module):
         return x
 
     def functional(self, x: torch.tensor):
-        x = torch.unsqueeze(x, dim=1)
+        if self.in_channels == 1:
+            x = torch.unsqueeze(x, dim=1)
+        print(x.shape)
         outputs = []
         for block in self.conv_downsample:
             x = block(x)
