@@ -5,6 +5,11 @@ from src.training.conv_block_model import ConvBlock1D
 import numpy as np
 from typing import Tuple
 from tqdm import tqdm
+from src.tddft_methods.kohm_sham_utils import (
+    compute_the_gradient,
+    compute_the_magnetization,
+    build_hamiltonian,
+)
 
 
 def pca_gradient(samples: torch.Tensor, gradient: torch.Tensor):

@@ -234,14 +234,14 @@ class DrivingDisorder:
         )
 
         self.h = (
-            h_init[None, :] * (1 - np.tanh(time * rate)[:, None]) / 2
-            + h_final[None, :] * (1 + np.tanh(time * rate)[:, None]) / 2
+            h_init[None, :] * (1 - np.exp(time * rate)[:, None]) / 2
+            + h_final[None, :] * (1 + np.exp(time * rate)[:, None]) / 2
         )  # initial field
 
         self.i = i
 
     def field(self, t: float, args) -> Union[np.ndarray, float]:
-        return self.h[int(t / self.dt) - 1, self.i]
+        return self.h[int(t / self.dt), self.i]
 
 
 # size of the system

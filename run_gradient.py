@@ -4,7 +4,7 @@ import torch
 import numpy as np
 
 data = np.load(
-    "data/kohm_sham_approach/disorder/reduction_dataset_h_2.7_omega_2.7_j_1_1nn_n_150000.npz"
+    "data/kohm_sham_approach/uniform/reduction_2_input_channel_dataset_h_0.0_2.0_omega_1_j_1_1nn_n_100.npz"
 )
 
 ndata = 1000
@@ -21,22 +21,24 @@ e_torch = torch.from_numpy(e[:ndata])
 
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/model_zzxz_reduction_f_h_2.7_omega_2.7_j_1_1nn_150k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/disorder/model_zzxz_reduction_2_input_channel_dataset_h_0.0-2.0_omega_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
     map_location="cpu",
 )
 model.eval()
 
+energy = Energy_XXZX(model=model)
+
 
 gd = gd = GradientDescent(
     n_instances=100,
-    run_name="bla",
-    loglr=-3,
+    run_name="270623_uniform",
+    loglr=-1,
     n_init=z_torch,
     cut=2,
     n_ensambles=1,
-    model_name="/kohm_sham/disorder/model_zzxz_reduction_f_h_2.7_omega_2.7_j_1_1nn_150k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
-    target_path="data/kohm_sham_approach/disorder/reduction_dataset_h_2.7_omega_2.7_j_1_1nn_n_150000.npz",
-    epochs=20000,
+    energy=energy,
+    target_path="data/kohm_sham_approach/uniform/reduction_2_input_channel_dataset_h_0.0_2.0_omega_1_j_1_1nn_n_100.npz",
+    epochs=3000,
     variable_lr=False,
     early_stopping=False,
     L=8,

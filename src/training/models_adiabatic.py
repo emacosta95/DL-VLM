@@ -434,7 +434,7 @@ class Energy_XXZX(nn.Module):
         e_ext = h * z  # batch x size
         # transverse external term
 
-        return e_ext.sum(-1).sum(-1) + f_tot.sum(-1)
+        return e_ext.mean(-1).sum(-1) + f_tot.mean(-1)
 
     def functional_value(self, z: torch.Tensor):
         if z.shape[0] != 1:
@@ -458,15 +458,32 @@ class Energy_XXZX_1input(nn.Module):
         if z.shape[0] != 1:
             f = self.model(z)  # batch x 2 x size
         else:
+            f = self.model(z).squeeze(0)
+        # sum of zz + x
+        f_tot = f[0, :]  # + torch.roll(z[:, 0, :], shifts=-1, dims=-1) * z[:, 0, :]
+        # longitudinal external term
+
+        e_ext = h[0, :] * z  # batch x size
+        # transverse external term
+        e_ext_transverse = f[1, :] * h[1, :]
+
+        return e_ext.sum(-1) + f_tot.sum(-1) + e_ext_transverse.sum(-1)
+
+    def batch_estimation(self, z: torch.Tensor, h: torch.Tensor):
+        # single take
+        if z.shape[0] != 1:
+            f = self.model(z)  # batch x 2 x size
+        else:
             f = self.model(z).unsqueeze(0)
         # sum of zz + x
         f_tot = f[:, 0, :]  # + torch.roll(z[:, 0, :], shifts=-1, dims=-1) * z[:, 0, :]
         # longitudinal external term
-        e_ext = h[0, :] * z  # batch x size
-        # transverse external term
-        e_ext_transverse = f[:, 1, :] * h[1, :]
 
-        return e_ext.sum(-1).sum(-1) + f_tot.sum(-1) + e_ext_transverse.sum(-1)
+        e_ext = h[:, 0, :] * z  # batch x size
+        # transverse external term
+        e_ext_transverse = f[:, 1, :] * h[:, 1, :]
+
+        return e_ext.sum(-1) + f_tot.sum(-1) + e_ext_transverse.sum(-1)
 
     def functional_value(self, z: torch.Tensor):
         if z.shape[0] != 1:

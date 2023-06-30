@@ -6,7 +6,7 @@ import torch.nn as nn
 import numpy as np
 from src.training.models_adiabatic import Energy_XXZX
 from src.training.utils import initial_ensamble_random
-from tqdm.notebook import tqdm, trange
+from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
 import random
 from typing import Optional
@@ -155,6 +155,7 @@ class GradientDescent:
                 m_init = pt.mean(pt.tensor(self.n_init, dtype=pt.double), dim=0).view(
                     1, 2, self.n_init.shape[-1]
                 )
+
             phi = pt.acos(m_init)
             print(phi.shape)
         # initialize in double and device
@@ -213,14 +214,27 @@ class GradientDescent:
 
             if epoch == 0:
                 history = eng.detach().view(1, eng.shape[0])
-            elif epoch % 100 == 0:
+            elif epoch % 10000 == 0:
                 history = pt.cat((history, eng.detach().view(1, eng.shape[0])), dim=0)
+
+                density_img = np.cos(phi.clone().detach().numpy())
+
+                if not (self.save):
+                    plt.plot(density_img[0, 0, :])
+                    plt.plot(self.n_target[idx, 0, :])
+                    plt.title(r"$\mathbf{z}$ configuration", fontsize=20)
+                    plt.show()
+
+                    plt.plot(density_img[0, 1, :])
+                    plt.plot(self.n_target[idx, 1, :])
+                    plt.title(r"$\mathbf{x}$ configuration", fontsize=20)
+                    plt.show()
 
             eng_old = eng.detach()
 
             if self.n_ensambles == 1:
                 t_iterator.set_description(
-                    f"eng={(eng[0].detach().cpu().numpy()-self.e_target[idx])/self.e_target[idx]:.6f} idx={idx}"
+                    f"eng={(eng[0].detach().cpu().numpy()-self.e_target[idx]/8)/(self.e_target[idx]/8):.6f} idx={idx}, "
                 )
             t_iterator.refresh()
 
@@ -253,9 +267,7 @@ class GradientDescent:
 
         return eng.clone().detach(), phi, grad.detach().cpu().numpy()
 
-    def gradient_descent_step_ZZXZ(
-        self, energy: nn.Module, phi: pt.tensor, pot: pt.Tensor
-    ) -> tuple:
+    def gradient_descent_step_ZZXZ(self, phi: pt.tensor, pot: pt.Tensor) -> tuple:
         """This routine computes the step of the gradient using both the positivity and the nomralization constrain
 
         Arguments:
