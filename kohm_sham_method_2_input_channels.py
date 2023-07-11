@@ -96,10 +96,10 @@ for idx in range(ndata):
 
             psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
 
-        z_measure[idx, i] = torch.abs(z[0, 0, :] - z_target[idx, 0]).mean(0).item()
-        x_measure[idx, i] = torch.abs(z[0, 1, :] - z_target[idx, 1]).mean(0).item()
+        z_measure[idx, t] = torch.abs(z[0, 0, :] - z_target[idx, 0]).mean(0).item()
+        x_measure[idx, t] = torch.abs(z[0, 1, :] - z_target[idx, 1]).mean(0).item()
 
-        engs[idx, i] = eng
+        engs[idx, t] = eng
 
     np.savez(
         f"data/kohm_sham_approach/results/kohm_sham_uniform_0.0_2.0_ndata_{ndata}_iteration_{iteration}_intermediate_step_{intermediate_step}",

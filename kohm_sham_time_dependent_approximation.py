@@ -12,6 +12,8 @@ from src.tddft_methods.kohm_sham_utils import (
     initialize_psi_from_z_and_x,
     compute_the_magnetization,
     time_step_crank_nicolson_algorithm,
+    time_step_backward_algorithm,
+    crank_nicolson_algorithm,
 )
 import qutip
 from typing import List
@@ -64,13 +66,14 @@ h = torch.from_numpy(h).double()
 
 # initialization
 idx = 0
-self_consistent_step = 10
+self_consistent_step = 50
 steps = 1000
 time = torch.linspace(0.0, 10.0, steps)
 dt = time[1] - time[0]
 
-ndata = 30
-rates = np.linspace(0.0, 3.0, ndata)
+ndata = 10
+rates = np.linspace(0.0, 1.0, ndata)
+
 
 h_tot = np.zeros((ndata, steps, 2, l))
 z_qutip_tot = np.zeros((ndata, steps, l))
@@ -79,11 +82,13 @@ x_qutip_tot = np.zeros((ndata, steps, l))
 x_tot = np.zeros((ndata, steps, l))
 eng_tot = np.zeros((ndata, steps))
 
-hi, idx = torch.max(h, dim=0)
-idx = idx[0, 0]
-hi = h[idx.item()]
-zi = z_target[idx.item()]
-hf, _ = torch.min(h, dim=0)
+# hi, idx = torch.max(h, dim=0)
+hi = h[idx]
+# idx = idx[0, 0]
+# hi = h[idx.item()]
+zi = z_target[idx]
+# hf, _ = torch.min(h, dim=0)
+hf = h[idx + 2]
 for q, rate in enumerate(rates):
     # Qutip Dynamics
     # Hamiltonian
@@ -188,41 +193,107 @@ for q, rate in enumerate(rates):
         #  Kohm Sham step 2) Build up the fields
         if i == len(time) - 1:
             z, x = compute_the_magnetization(psi=psi)
-            psi, eng = time_step_crank_nicolson_algorithm(
-                psi=psi,
-                h=h[i],
-                h_plus=h[i],
-                energy=energy,
-                dt=dt,
-                self_consistent_steps=self_consistent_step,
-            )
+            z = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
+            z = z.unsqueeze(0)  # the batch dimension
+
+            for step in range(self_consistent_step):
+                psi0 = psi.clone()
+                z0, x0 = compute_the_magnetization(psi=psi0)
+                z0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
+                z0 = z0.unsqueeze(0)  # the batch dimension
+
+                omega_eff, eng = compute_the_gradient(
+                    m=z0, h=h[i], energy=energy, respect_to="x"
+                )
+                h_eff, _ = compute_the_gradient(
+                    m=z0, h=h[i], energy=energy, respect_to="z"
+                )
+
+                hamiltonian0 = build_hamiltonian(
+                    field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+                )
+
+                psi1 = crank_nicolson_algorithm(
+                    hamiltonian=hamiltonian0, psi=psi0, dt=dt
+                )
+
+                z1, x1 = compute_the_magnetization(psi=psi1)
+                z1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
+                z1 = z1.unsqueeze(0)  # the batch dimension
+
+                omega_eff, eng = compute_the_gradient(
+                    m=z1, h=h[i], energy=energy, respect_to="x"
+                )
+                h_eff, _ = compute_the_gradient(
+                    m=z1, h=h[i], energy=energy, respect_to="z"
+                )
+
+                hamiltonian1 = build_hamiltonian(
+                    field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+                )
+
+                psi = crank_nicolson_algorithm(
+                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                )
         else:
             z, x = compute_the_magnetization(psi=psi)
-            psi, eng = time_step_crank_nicolson_algorithm(
-                psi=psi,
-                h=h[i],
-                h_plus=h[i + 1],
-                energy=energy,
-                dt=dt,
-                self_consistent_steps=self_consistent_step,
-            )
+            z = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
+            z = z.unsqueeze(0)  # the batch dimension
 
-        eng_tot[q] = eng
+            for step in range(self_consistent_step):
+                psi0 = psi.clone()
+                z0, x0 = compute_the_magnetization(psi=psi0)
+                z0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
+                z0 = z0.unsqueeze(0)  # the batch dimension
 
-        z_tot[q, i, :] = z[0].detach().numpy()
-        x_tot[q, i, :] = x[0].detach().numpy()
+                omega_eff, eng = compute_the_gradient(
+                    m=z0, h=h[i], energy=energy, respect_to="x"
+                )
+                h_eff, _ = compute_the_gradient(
+                    m=z0, h=h[i], energy=energy, respect_to="z"
+                )
 
-        t_bar.refresh()
+                hamiltonian0 = build_hamiltonian(
+                    field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+                )
 
-    np.savez(
-        f"data/kohm_sham_approach/results/tddft_adiabatic_approximation_uniform_0.0_2.0_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_rate_{3.0}",
-        x_qutip=x_qutip_tot,
-        z_qutip=z_qutip_tot,
-        z=z_tot,
-        x=x_tot,
-        potential=h_tot,
-        energy=eng_tot,
-    )
+                psi1 = crank_nicolson_algorithm(
+                    hamiltonian=hamiltonian0, psi=psi0, dt=dt
+                )
+
+                z1, x1 = compute_the_magnetization(psi=psi1)
+                z1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
+                z1 = z1.unsqueeze(0)  # the batch dimension
+
+                omega_eff, eng = compute_the_gradient(
+                    m=z1, h=h[i + 1], energy=energy, respect_to="x"
+                )
+                h_eff, _ = compute_the_gradient(
+                    m=z1, h=h[i + 1], energy=energy, respect_to="z"
+                )
+
+                hamiltonian1 = build_hamiltonian(
+                    field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+                )
+
+                psi = crank_nicolson_algorithm(
+                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                )
+
+        eng_tot[q, i] = eng
+
+        z_tot[q, i, :] = z[0, 0].detach().numpy()
+        x_tot[q, i, :] = z[0, 1].detach().numpy()
+
+        np.savez(
+            f"data/kohm_sham_approach/results/tddft_adiabatic_approximation_uniform_0.0_2.0_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_rate_{3.0}",
+            x_qutip=x_qutip_tot,
+            z_qutip=z_qutip_tot,
+            z=z_tot,
+            x=x_tot,
+            potential=h_tot,
+            energy=eng_tot,
+        )
 
 # %% Visualize results
 
