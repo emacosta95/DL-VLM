@@ -14,6 +14,7 @@ from src.tddft_methods.kohm_sham_utils import (
     time_step_crank_nicolson_algorithm,
     time_step_backward_algorithm,
     crank_nicolson_algorithm,
+    exponentiation_algorithm,
 )
 import qutip
 from typing import List
@@ -65,14 +66,15 @@ h = torch.from_numpy(h).double()
 
 
 # initialization
+exponent_algorithm = False
 idx = 0
-self_consistent_step = 50
+self_consistent_step = 10
 steps = 1000
 time = torch.linspace(0.0, 10.0, steps)
 dt = time[1] - time[0]
 
 ndata = 10
-rates = np.linspace(0.0, 1.0, ndata)
+rates = np.linspace(0.0, 0.2, ndata)
 
 
 h_tot = np.zeros((ndata, steps, 2, l))
@@ -213,9 +215,14 @@ for q, rate in enumerate(rates):
                     field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
                 )
 
-                psi1 = crank_nicolson_algorithm(
-                    hamiltonian=hamiltonian0, psi=psi0, dt=dt
-                )
+                if exponent_algorithm:
+                    psi1 = exponentiation_algorithm(
+                        hamiltonian=hamiltonian0, psi=psi0, dt=dt
+                    )
+                else:
+                    psi1 = crank_nicolson_algorithm(
+                        hamiltonian=hamiltonian0, psi=psi0, dt=dt
+                    )
 
                 z1, x1 = compute_the_magnetization(psi=psi1)
                 z1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
@@ -235,6 +242,16 @@ for q, rate in enumerate(rates):
                 psi = crank_nicolson_algorithm(
                     hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
                 )
+
+                if exponent_algorithm:
+                    psi = exponentiation_algorithm(
+                        hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                    )
+                else:
+                    psi = crank_nicolson_algorithm(
+                        hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                    )
+
         else:
             z, x = compute_the_magnetization(psi=psi)
             z = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
@@ -257,9 +274,14 @@ for q, rate in enumerate(rates):
                     field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
                 )
 
-                psi1 = crank_nicolson_algorithm(
-                    hamiltonian=hamiltonian0, psi=psi0, dt=dt
-                )
+                if exponent_algorithm:
+                    psi1 = exponentiation_algorithm(
+                        hamiltonian=hamiltonian0, psi=psi0, dt=dt
+                    )
+                else:
+                    psi1 = crank_nicolson_algorithm(
+                        hamiltonian=hamiltonian0, psi=psi0, dt=dt
+                    )
 
                 z1, x1 = compute_the_magnetization(psi=psi1)
                 z1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
@@ -276,9 +298,14 @@ for q, rate in enumerate(rates):
                     field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
                 )
 
-                psi = crank_nicolson_algorithm(
-                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                )
+                if exponent_algorithm:
+                    psi = exponentiation_algorithm(
+                        hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                    )
+                else:
+                    psi = crank_nicolson_algorithm(
+                        hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                    )
 
         eng_tot[q, i] = eng
 
@@ -286,7 +313,7 @@ for q, rate in enumerate(rates):
         x_tot[q, i, :] = z[0, 1].detach().numpy()
 
         np.savez(
-            f"data/kohm_sham_approach/results/tddft_adiabatic_approximation_uniform_0.0_2.0_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_rate_{3.0}",
+            f"data/kohm_sham_approach/results/tddft_adiabatic_approximation_uniform_0.0_2.0_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_rate_{0.2}_exp_{exponent_algorithm}",
             x_qutip=x_qutip_tot,
             z_qutip=z_qutip_tot,
             z=z_tot,

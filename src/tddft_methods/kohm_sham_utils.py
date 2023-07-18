@@ -115,6 +115,15 @@ def crank_nicolson_algorithm(
     return psi
 
 
+def exponentiation_algorithm(
+    hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float
+):
+    unitary = torch.matrix_exp(-1j * dt * hamiltonian)
+    psi = torch.einsum("lab,lb->la", unitary, psi)
+    psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
+    return psi
+
+
 def time_step_backward_algorithm(
     psi: torch.ComplexType,
     h: torch.Tensor,

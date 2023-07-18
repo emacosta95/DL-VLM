@@ -45,13 +45,14 @@ z_measure: np.ndarray = np.zeros((ndata, iteration))
 x_measure: np.ndarray = np.zeros((ndata, iteration))
 engs: np.ndarray = np.zeros((ndata, iteration))
 
+psi0 = initialize_psi_from_z_and_x(
+    z=-1 * z_target[:, 0].mean(dim=0), x=z_target[:, 1].mean(dim=0)
+)
 
 for idx in range(ndata):
     # Kohm Sham step 1) Initialize the state from an initial magnetization
 
-    psi = initialize_psi_from_z_and_x(
-        z=-1 * z_target[:, 0].mean(dim=0), x=z_target[:, 1].mean(dim=0)
-    )
+    psi = psi0.clone()
 
     for t in trange(iteration):
         #  Kohm Sham step 2) Build up the fields
@@ -91,15 +92,14 @@ for idx in range(ndata):
             #  Update the field
 
             psi_tilde = torch.einsum("lij,lj->li", tot_hamiltonian, psi)
-
             psi = (1 - lr) * psi + lr * psi_tilde
-
             psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
+
+            if i == 0:
+                engs[idx, t] = eng
 
         z_measure[idx, t] = torch.abs(z[0, 0, :] - z_target[idx, 0]).mean(0).item()
         x_measure[idx, t] = torch.abs(z[0, 1, :] - z_target[idx, 1]).mean(0).item()
-
-        engs[idx, t] = eng
 
     np.savez(
         f"data/kohm_sham_approach/results/kohm_sham_uniform_0.0_2.0_ndata_{ndata}_iteration_{iteration}_intermediate_step_{intermediate_step}",
