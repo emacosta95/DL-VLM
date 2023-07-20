@@ -37,12 +37,13 @@ h = torch.from_numpy(h).double()
 
 # %% hyperparemeters
 lr = 0.001
-intermediate_step = 10
+intermediate_step = 1
 ndata = 50
 iteration = 2000
 
 z_measure: np.ndarray = np.zeros((ndata, iteration))
 x_measure: np.ndarray = np.zeros((ndata, iteration))
+gradient: np.ndarray = np.zeros((ndata, iteration, 2, l))
 engs: np.ndarray = np.zeros((ndata, iteration))
 
 psi0 = initialize_psi_from_z_and_x(
@@ -98,6 +99,8 @@ for idx in range(ndata):
             if i == 0:
                 engs[idx, t] = eng
 
+        gradient[idx, t, 1, :] = -1 * omega_eff[0]
+        gradient[idx, t, 0, :] = -1 * h_eff[0]
         z_measure[idx, t] = torch.abs(z[0, 0, :] - z_target[idx, 0]).mean(0).item()
         x_measure[idx, t] = torch.abs(z[0, 1, :] - z_target[idx, 1]).mean(0).item()
 
@@ -106,6 +109,7 @@ for idx in range(ndata):
         energy=engs,
         dx=x_measure,
         dz=z_measure,
+        gradient=gradient,
     )
 
 # %% Visualize results

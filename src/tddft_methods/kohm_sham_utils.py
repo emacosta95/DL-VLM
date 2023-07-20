@@ -43,6 +43,7 @@ def compute_the_gradient(
     m: torch.DoubleTensor, h: torch.DoubleTensor, energy: nn.Module, respect_to: str
 ) -> torch.DoubleTensor:
     m = m.detach()
+
     if respect_to == "z":
         z = m[:, 0, :]
         z.requires_grad_(True)
@@ -51,8 +52,8 @@ def compute_the_gradient(
         x = m[:, 1, :]
         x.requires_grad_(True)
         input = torch.cat((m[:, 0, :].unsqueeze(1), x.unsqueeze(1)), dim=1)
-    eng = energy(z=input, h=h)
-    eng.backward(torch.ones_like(eng))
+    eng = energy(z=input, h=h)[0]
+    eng.backward()
     with torch.no_grad():
         if respect_to == "z":
             grad = z.grad.clone()
@@ -60,6 +61,25 @@ def compute_the_gradient(
         elif respect_to == "x":
             grad = x.grad.clone()
             x.grad.zero_()
+
+    return grad.detach(), eng.squeeze().item()
+
+
+def compute_the_gradient_2nd_version(
+    m: torch.DoubleTensor,
+    h: torch.DoubleTensor,
+    energy: nn.Module,
+) -> torch.DoubleTensor:
+    m = m.detach()
+    m = m.requires_grad_(True)
+    energy.eval()
+    energy = energy
+    eng = energy(z=m, h=h)
+    print(eng.shape)
+    eng.backward(torch.ones_like(eng))
+    with torch.no_grad():
+        grad = m.grad.clone()
+        m.grad.zero_()
 
     return grad.detach(), eng.squeeze().item()
 
@@ -92,8 +112,11 @@ def compute_the_magnetization(psi: torch.Tensor) -> Tuple[torch.DoubleTensor]:
     x_operator = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.complex128)
     z_operator = torch.tensor([[1.0, 0.0], [0.0, -1.0]], dtype=torch.complex128)
 
-    x = torch.einsum("li,ij,lj->l", torch.conj(psi), x_operator, psi).double()
-    z = torch.einsum("li,ij,lj->l", torch.conj(psi), z_operator, psi).double()
+    x = torch.einsum("li,ij,lj->l", torch.conj(psi), x_operator, psi)  # .double()
+    z = torch.einsum("li,ij,lj->l", torch.conj(psi), z_operator, psi)  # .double()
+
+    x = torch.real(x).double()
+    z = torch.real(z).double()
 
     return z.detach(), x.detach()
 
@@ -111,14 +134,22 @@ def crank_nicolson_algorithm(
     psi = torch.einsum("lab,lb->la", unitary, psi)
     # psi = psi - 0.5j * dt * torch.einsum("lab,lb->la", hamiltonian, psi)
     # impose the norm
-    psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
+    # psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
     return psi
 
 
 def exponentiation_algorithm(
     hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float
 ):
-    unitary = torch.matrix_exp(-1j * dt * hamiltonian)
+    identity = torch.tensor([[1.0, 0.0], [0.0, 1.0]], dtype=torch.complex128)
+    p_1 = -1j * dt * hamiltonian.clone()
+    p_2 = (-1j * dt) * torch.einsum("lab,lbc->lac", p_1, hamiltonian)
+    p_3 = (-1j * dt) * torch.einsum("lab,lbc->lac", p_2, hamiltonian)
+    p_4 = (-1j * dt) * torch.einsum("lab,lbc->lac", p_3, hamiltonian)
+
+    unitary = (
+        identity[None, :, :] + p_1 + p_2 / 2 + p_3 / (2 * 3) + p_4 / (2 * 3 * 4)
+    )  # torch.matrix_exp(-1j * dt * hamiltonian)
     psi = torch.einsum("lab,lb->la", unitary, psi)
     psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
     return psi

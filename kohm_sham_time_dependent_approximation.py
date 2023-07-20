@@ -11,8 +11,6 @@ from src.tddft_methods.kohm_sham_utils import (
     build_hamiltonian,
     initialize_psi_from_z_and_x,
     compute_the_magnetization,
-    time_step_crank_nicolson_algorithm,
-    time_step_backward_algorithm,
     crank_nicolson_algorithm,
     exponentiation_algorithm,
 )
@@ -66,9 +64,9 @@ h = torch.from_numpy(h).double()
 
 
 # initialization
-exponent_algorithm = False
+exponent_algorithm = True
 idx = 0
-self_consistent_step = 10
+self_consistent_step = 1
 steps = 1000
 time = torch.linspace(0.0, 10.0, steps)
 dt = time[1] - time[0]
@@ -82,15 +80,18 @@ z_qutip_tot = np.zeros((ndata, steps, l))
 z_tot = np.zeros((ndata, steps, l))
 x_qutip_tot = np.zeros((ndata, steps, l))
 x_tot = np.zeros((ndata, steps, l))
+eng_tot_z = np.zeros((ndata, steps))
+eng_tot_x = np.zeros((ndata, steps))
 eng_tot = np.zeros((ndata, steps))
+gradients_tot = np.zeros((ndata, steps, 2, l))
 
 # hi, idx = torch.max(h, dim=0)
-hi = h[idx]
+hi = h[idx + 2]
 # idx = idx[0, 0]
 # hi = h[idx.item()]
-zi = z_target[idx]
+zi = z_target[idx + 2]
 # hf, _ = torch.min(h, dim=0)
-hf = h[idx + 2]
+hf = h[idx]
 for q, rate in enumerate(rates):
     # Qutip Dynamics
     # Hamiltonian
@@ -198,32 +199,28 @@ for q, rate in enumerate(rates):
             z = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
             z = z.unsqueeze(0)  # the batch dimension
 
+            z0, x0 = compute_the_magnetization(psi=psi)
+            z0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
+            z0 = z0.unsqueeze(0)  # the batch dimension
+
+            omega_eff, eng = compute_the_gradient(
+                m=z0, h=h[i], energy=energy, respect_to="x"
+            )
+            h_eff, _ = compute_the_gradient(m=z0, h=h[i], energy=energy, respect_to="z")
+
+            hamiltonian0 = build_hamiltonian(
+                field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+            )
+            if exponent_algorithm:
+                psi1 = exponentiation_algorithm(
+                    hamiltonian=hamiltonian0, psi=psi, dt=dt
+                )
+            else:
+                psi1 = crank_nicolson_algorithm(
+                    hamiltonian=hamiltonian0, psi=psi, dt=dt
+                )
+
             for step in range(self_consistent_step):
-                psi0 = psi.clone()
-                z0, x0 = compute_the_magnetization(psi=psi0)
-                z0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
-                z0 = z0.unsqueeze(0)  # the batch dimension
-
-                omega_eff, eng = compute_the_gradient(
-                    m=z0, h=h[i], energy=energy, respect_to="x"
-                )
-                h_eff, _ = compute_the_gradient(
-                    m=z0, h=h[i], energy=energy, respect_to="z"
-                )
-
-                hamiltonian0 = build_hamiltonian(
-                    field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
-                )
-
-                if exponent_algorithm:
-                    psi1 = exponentiation_algorithm(
-                        hamiltonian=hamiltonian0, psi=psi0, dt=dt
-                    )
-                else:
-                    psi1 = crank_nicolson_algorithm(
-                        hamiltonian=hamiltonian0, psi=psi0, dt=dt
-                    )
-
                 z1, x1 = compute_the_magnetization(psi=psi1)
                 z1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
                 z1 = z1.unsqueeze(0)  # the batch dimension
@@ -239,78 +236,97 @@ for q, rate in enumerate(rates):
                     field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
                 )
 
-                psi = crank_nicolson_algorithm(
-                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                )
-
                 if exponent_algorithm:
-                    psi = exponentiation_algorithm(
+                    psi1 = exponentiation_algorithm(
                         hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
                     )
                 else:
-                    psi = crank_nicolson_algorithm(
+                    psi1 = crank_nicolson_algorithm(
                         hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
                     )
+
+            if exponent_algorithm:
+                psi = exponentiation_algorithm(
+                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                )
+            else:
+                psi = crank_nicolson_algorithm(
+                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                )
 
         else:
             z, x = compute_the_magnetization(psi=psi)
             z = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
             z = z.unsqueeze(0)  # the batch dimension
 
+            z0, x0 = compute_the_magnetization(psi=psi)
+            z0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
+            z0 = z0.unsqueeze(0)  # the batch dimension
+
+            omega_eff, engx = compute_the_gradient(
+                m=z0, h=h[i], energy=energy, respect_to="x"
+            )
+            h_eff, engz = compute_the_gradient(
+                m=z0, h=h[i], energy=energy, respect_to="z"
+            )
+
+            hamiltonian0 = build_hamiltonian(
+                field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+            )
+            if exponent_algorithm:
+                psi1 = exponentiation_algorithm(
+                    hamiltonian=hamiltonian0, psi=psi, dt=dt
+                )
+            else:
+                psi1 = crank_nicolson_algorithm(
+                    hamiltonian=hamiltonian0, psi=psi, dt=dt
+                )
+
+            z_old: torch.Tensor = torch.zeros_like(z0)
             for step in range(self_consistent_step):
-                psi0 = psi.clone()
-                z0, x0 = compute_the_magnetization(psi=psi0)
-                z0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
-                z0 = z0.unsqueeze(0)  # the batch dimension
-
-                omega_eff, eng = compute_the_gradient(
-                    m=z0, h=h[i], energy=energy, respect_to="x"
-                )
-                h_eff, _ = compute_the_gradient(
-                    m=z0, h=h[i], energy=energy, respect_to="z"
-                )
-
-                hamiltonian0 = build_hamiltonian(
-                    field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
-                )
-
-                if exponent_algorithm:
-                    psi1 = exponentiation_algorithm(
-                        hamiltonian=hamiltonian0, psi=psi0, dt=dt
-                    )
-                else:
-                    psi1 = crank_nicolson_algorithm(
-                        hamiltonian=hamiltonian0, psi=psi0, dt=dt
-                    )
-
                 z1, x1 = compute_the_magnetization(psi=psi1)
                 z1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
                 z1 = z1.unsqueeze(0)  # the batch dimension
 
-                omega_eff, eng = compute_the_gradient(
+                dz = torch.mean(z_old - z1)
+                z_old = z1.clone()
+                # print("dz=", dz.item())
+
+                omega_eff1, eng = compute_the_gradient(
                     m=z1, h=h[i + 1], energy=energy, respect_to="x"
                 )
-                h_eff, _ = compute_the_gradient(
+                h_eff1, _ = compute_the_gradient(
                     m=z1, h=h[i + 1], energy=energy, respect_to="z"
                 )
 
                 hamiltonian1 = build_hamiltonian(
-                    field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+                    field_x=-1 * omega_eff1[0], field_z=-1 * h_eff1[0]
                 )
 
                 if exponent_algorithm:
-                    psi = exponentiation_algorithm(
+                    psi1 = exponentiation_algorithm(
                         hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
                     )
                 else:
-                    psi = crank_nicolson_algorithm(
+                    psi1 = crank_nicolson_algorithm(
                         hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
                     )
 
-        eng_tot[q, i] = eng
+            if exponent_algorithm:
+                psi = exponentiation_algorithm(
+                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                )
+            else:
+                psi = crank_nicolson_algorithm(
+                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
+                )
+        eng_tot_z[q, i] = engz
+        eng_tot_x[q, i] = engx
 
         z_tot[q, i, :] = z[0, 0].detach().numpy()
         x_tot[q, i, :] = z[0, 1].detach().numpy()
+        gradients_tot[q, i, 1, :] = -1 * omega_eff[0].detach().numpy()
+        gradients_tot[q, i, 0, :] = -1 * h_eff[0].detach().numpy()
 
         np.savez(
             f"data/kohm_sham_approach/results/tddft_adiabatic_approximation_uniform_0.0_2.0_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_rate_{0.2}_exp_{exponent_algorithm}",
@@ -319,7 +335,9 @@ for q, rate in enumerate(rates):
             z=z_tot,
             x=x_tot,
             potential=h_tot,
-            energy=eng_tot,
+            energy_x=eng_tot_x,
+            energy_z=eng_tot_z,
+            gradient=gradients_tot,
         )
 
 # %% Visualize results
