@@ -411,3 +411,148 @@ class GradientDescent:
                     "data/gd_data/history_" + session_name,
                     history=self.min_hist[epoch],
                 )
+
+
+class GradientDescentKohmSham:
+    def __init__(
+        self,
+        loglr: int,
+        energy: nn.Module,
+        epochs: int,
+        seed: int,
+        num_threads: int,
+        device: str,
+        n_init: np.array,
+        h: np.array,
+    ):
+        self.device = device
+        self.num_threads = num_threads
+        self.seed = seed
+
+        self.lr = pt.tensor(10**loglr, device=self.device)
+
+        self.epochs = epochs
+
+        self.n_init = n_init
+
+        self.energy = energy
+
+        self.h = h
+
+        self.epochs = epochs
+
+    def run(self) -> None:
+        """This function runs the entire process of gradient descent for each instance."""
+
+        # select number of threads
+        pt.set_num_threads(self.num_threads)
+
+        # fix the seed
+        # Initialize the seed
+        pt.manual_seed(self.seed)
+        np.random.seed(self.seed)
+        random.seed(self.seed)
+
+        # loading the model
+        print("loading the model...")
+        self.energy = self.energy.to(device=self.device)
+        self.energy.eval()
+        # starting the cycle for each instance
+        print("starting the cycle...")
+
+        # initialize phi
+        phi = self.initialize_phi()
+        print(f"is leaf={phi.is_leaf}")
+
+        # compute the gradient descent
+        # for a single target sample
+        z = self._single_gradient_descent(phi=phi)
+
+        return z
+
+    def initialize_phi(self) -> pt.tensor:
+        """This routine initialize the phis using the average decomposition of the dataset (up to now, the best initialization ever found)
+
+        Returns:
+            phi[pt.tensor]: [the initialized phis with non zero gradient]
+        """
+
+        # sqrt of the initial configuration
+
+        m_init = pt.tensor(self.n_init, dtype=pt.double).unsqueeze(0)
+
+        phi = pt.acos(m_init)
+        print(phi.shape)
+        # initialize in double and device
+        phi = phi.to(dtype=pt.double)
+        phi = phi.to(device=self.device)
+        # make it a leaft
+        phi.requires_grad_(True)
+
+        return phi
+
+    def _single_gradient_descent(self, phi: pt.tensor) -> tuple:
+        """This routine compute the gradient descent for an energy functional
+        with external potential given by the idx-th instance and kinetic energy functional determined by model.
+
+        Args:
+            phi (pt.tensor): [the sqrt of the density profile]
+            idx (int): [index of the instance]
+            model (nn.Module): [model which describes the kinetic energy functional]
+
+        Returns:
+           eng[np.array] : [the energy values for different initial configurations]
+           exact_eng[np.array] : [an estimation of the Von Weiszacker functional]
+           phi[pt.tensor] : [the minimum configuration of the run for different initial states]
+           history[np.array] : [the histories of the different gradient descents]
+           exact_history[np.array] : [the histories of the estimation of the different gradient descents]
+        """
+
+        # initialize the single gradient descent
+
+        pot = pt.tensor(self.h, device=self.device).unsqueeze(0)
+
+        # exact_history = np.array([])
+
+        eng_old = pt.tensor(0, device=self.device)
+
+        # refresh the lr every time
+
+        # start the gradient descent
+        t_iterator = tqdm(range(self.epochs))
+        for epoch in t_iterator:
+            eng, phi, grad = self.gradient_descent_step(phi=phi, pot=pot)
+            diff_eng = pt.abs(eng.detach() - eng_old)
+
+            density_img = np.cos(phi.clone().detach().numpy())
+            eng_old = eng.detach()
+
+            t_iterator.set_description(f"eng={(eng[0].detach().cpu().numpy()):.6f} , ")
+            t_iterator.refresh()
+
+        return density_img
+
+    def gradient_descent_step(self, phi: pt.tensor, pot: pt.Tensor) -> tuple:
+        """This routine computes the step of the gradient using both the positivity and the nomralization constrain
+
+        Arguments:
+        energy[nn.Module]: [the energy functional]
+        phi[pt.tensor]: [the sqrt of the density profile]
+
+        Returns:
+            eng[pt.tensor]: [the energy value computed before the step]
+            phi[pt.tensor]: [the wavefunction evaluated after the step]
+        """
+
+        w = pt.cos(phi)
+        eng = self.energy(w, pot)
+
+        eng.backward(pt.ones_like(eng))
+
+        with pt.no_grad():
+            grad = phi.grad
+
+            phi -= self.lr * grad
+            phi.grad.zero_()
+
+        return eng.clone().detach(), phi, grad.detach().cpu().numpy()

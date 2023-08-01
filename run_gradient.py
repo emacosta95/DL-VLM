@@ -1,4 +1,4 @@
-from src.training.models_adiabatic import Energy_XXZX
+from src.training.models_adiabatic import Energy_XXZX, Energy_reduction_XXZX
 from src.gradient_descent import GradientDescent
 import torch
 import numpy as np
@@ -7,7 +7,7 @@ data = np.load(
     "data/kohm_sham_approach/uniform/reduction_2_input_channel_dataset_h_0.0_2.0_omega_1_j_1_1nn_n_100.npz"
 )
 
-ndata = 1000
+ndata = 10
 
 z = data["density"]
 f = data["density_F"]
@@ -21,7 +21,7 @@ e_torch = torch.from_numpy(e[:ndata])
 
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/model_zzxz_reduction_2_input_channel_dataset_h_0.0-2.0_omega_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/disorder/model_zzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
     map_location="cpu",
 )
 model.eval()
@@ -30,8 +30,8 @@ energy = Energy_XXZX(model=model)
 
 
 gd = gd = GradientDescent(
-    n_instances=100,
-    run_name="270623_uniform",
+    n_instances=10,
+    run_name="280723_uniform_0_2_new_model",
     loglr=-1,
     n_init=z_torch,
     cut=2,
