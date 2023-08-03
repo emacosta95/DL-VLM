@@ -1,4 +1,6 @@
 # %% Imports
+
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,9 +19,14 @@ from src.tddft_methods.kohm_sham_utils import (
 from src.gradient_descent import GradientDescentKohmSham
 import qutip
 from typing import List
+import os
+
 
 ### SET NUM THREADS
-torch.set_num_threads(3)
+# os.environ["OMP_NUM_THREADS"] = "3"
+# os.environ["NUMEXPR_NUM_THREADS"] = "3"
+# os.environ["MKL_NUM_THREADS"] = "3"
+# torch.set_num_threads(3)
 
 
 # %% Qutip details
@@ -43,6 +50,28 @@ class Driving:
         return (
             self.hi[None, self.direction, :] * np.exp(-t[:, None] * self.rate)
             + (1 - np.exp(-t[:, None] * self.rate)) * self.hf[None, self.direction, :]
+        )
+
+
+class PeriodicDriving:
+    def __init__(
+        self, h_i: np.array, delta: np.array, rate: float, idx: int, direction: int
+    ) -> None:
+        self.hi = h_i
+        self.delta = delta
+        self.rate = rate
+        self.idx: int = idx
+        self.direction = direction
+
+    def field(self, t: float, args):
+        return self.hi[self.direction, self.idx] + (
+            self.delta[self.direction, self.idx]
+        ) * np.sin(self.rate * t)
+
+    def get_the_field(self, t: np.ndarray):
+        return (
+            self.hi[None, self.direction, :]
+            + (self.delta[None, self.direction, :]) * np.sin(self.rate * t)[:, None]
         )
 
 
@@ -73,8 +102,9 @@ z_target = torch.from_numpy(z).double()
 # initialization
 exponent_algorithm = True
 self_consistent_step = 1
-steps = 10000
-time = torch.linspace(0.0, 10.0, steps)
+steps = 2000
+tf = 20.0
+time = torch.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
 
 ndata = 10
@@ -102,6 +132,9 @@ m_qutip_tot = np.append(
     axis=-2,
 )
 
+# is the driving periodic?
+periodic = True
+
 # define the initial external field
 # zz x quench style (?)
 hi = torch.ones((2, l))
@@ -110,9 +143,14 @@ hi[0] = 2.0  # low longitudinal field
 
 # define the final external field
 hf = torch.ones((2, l))
-hf[1] = 1.1
-hf[0] = 1.1
+hf[1] = 1.01
+hf[0] = 0.1
 
+
+# define the delta for the periodic driving
+delta = torch.ones((2, l))
+delta[1] = 0.5
+delta[0] = 0.5
 
 energy = Energy_XXZX(model=model)
 
@@ -129,6 +167,7 @@ gd = GradientDescentKohmSham(
     n_init=torch.mean(z_target, dim=0),
     h=hi,
 )
+
 
 zi = gd.run()
 zi = torch.from_numpy(zi)[0]
@@ -179,25 +218,45 @@ for q, rate in enumerate(rates):
     # build up the time dependent object for the qutip evolution
     hamiltonian = [ham0.qutip_op]
 
+    print("periodic=", periodic, "\n")
     for i in range(l):
-        drive_z = Driving(
-            h_i=hi.detach().numpy(),
-            h_f=hf.detach().numpy(),
-            rate=rate,
-            idx=i,
-            direction=0,
-        )
+        if periodic:
+            drive_z = PeriodicDriving(
+                h_i=hi.detach().numpy(),
+                delta=delta.detach().numpy(),
+                rate=rate,
+                idx=i,
+                direction=0,
+            )
+        else:
+            drive_z = Driving(
+                h_i=hi.detach().numpy(),
+                h_f=hf.detach().numpy(),
+                rate=rate,
+                idx=i,
+                direction=0,
+            )
+
         hamiltonian.append([obs[i], drive_z.field])
 
     h_z = drive_z.get_the_field(time.detach().numpy()).reshape(time.shape[0], 1, -1)
     for i in range(l):
-        drive_x = Driving(
-            h_i=hi.detach().numpy(),
-            h_f=hf.detach().numpy(),
-            rate=rate,
-            idx=i,
-            direction=1,
-        )
+        if periodic:
+            drive_x = PeriodicDriving(
+                h_i=hi.detach().numpy(),
+                delta=delta.detach().numpy(),
+                rate=rate,
+                idx=i,
+                direction=1,
+            )
+        else:
+            drive_x = Driving(
+                h_i=hi.detach().numpy(),
+                h_f=hf.detach().numpy(),
+                rate=rate,
+                idx=i,
+                direction=1,
+            )
         hamiltonian.append([obs_x[i], drive_x.field])
     h_x = drive_x.get_the_field(time.detach().numpy()).reshape(time.shape[0], 1, -1)
 
@@ -375,20 +434,37 @@ for q, rate in enumerate(rates):
         gradients_tot[q, i, 1, :] = -1 * omega_eff[0].detach().numpy()
         gradients_tot[q, i, 0, :] = -1 * h_eff[0].detach().numpy()
 
-        np.savez(
-            f"data/kohm_sham_approach/results/tddft_adiabatic_approximation_uniform_model_h_0_5_omega_0_2_hi_{hi[0,0].item():.1f}_hf_{hf[0,0].item():.1f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
-            x_qutip=x_qutip_tot,
-            z_qutip=z_qutip_tot,
-            z=z_tot,
-            x=x_tot,
-            potential=h_tot,
-            energy_x=eng_tot_x,
-            energy_z=eng_tot_z,
-            energy=eng_tot,
-            energy_qutip=eng_qutip_tot,
-            gradient=gradients_tot,
-            rates=rates,
-        )
+        if periodic:
+            np.savez(
+                f"data/kohm_sham_approach/results/tddft_periodic_uniform_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_delta_{delta[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_delta_{delta[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
+                x_qutip=x_qutip_tot,
+                z_qutip=z_qutip_tot,
+                z=z_tot,
+                x=x_tot,
+                potential=h_tot,
+                energy_x=eng_tot_x,
+                energy_z=eng_tot_z,
+                energy=eng_tot,
+                energy_qutip=eng_qutip_tot,
+                gradient=gradients_tot,
+                rates=rates,
+            )
+
+        else:
+            np.savez(
+                f"data/kohm_sham_approach/results/tddft_quench_uniform_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
+                x_qutip=x_qutip_tot,
+                z_qutip=z_qutip_tot,
+                z=z_tot,
+                x=x_tot,
+                potential=h_tot,
+                energy_x=eng_tot_x,
+                energy_z=eng_tot_z,
+                energy=eng_tot,
+                energy_qutip=eng_qutip_tot,
+                gradient=gradients_tot,
+                rates=rates,
+            )
 
 # %% Visualize results
 
