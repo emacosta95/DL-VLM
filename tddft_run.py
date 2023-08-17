@@ -102,7 +102,7 @@ z_target = torch.from_numpy(z).double()
 # initialization
 exponent_algorithm = True
 self_consistent_step = 1
-steps = 2000
+steps = 5000
 tf = 20.0
 time = torch.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
@@ -133,24 +133,24 @@ m_qutip_tot = np.append(
 )
 
 # is the driving periodic?
-periodic = True
+periodic = False
 
 # define the initial external field
 # zz x quench style (?)
 hi = torch.ones((2, l))
 hi[1] = 2.0  # high transverse field
-hi[0] = 2.0  # low longitudinal field
+hi[0] = 10**-4  # low longitudinal field
 
 # define the final external field
 hf = torch.ones((2, l))
-hf[1] = 1.01
-hf[0] = 0.1
+hf[1] = 1.0
+hf[0] = 10**-4
 
 
 # define the delta for the periodic driving
 delta = torch.ones((2, l))
-delta[1] = 0.5
-delta[0] = 0.5
+delta[1] = 0.9
+delta[0] = 0.0
 
 energy = Energy_XXZX(model=model)
 

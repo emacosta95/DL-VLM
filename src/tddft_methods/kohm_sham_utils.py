@@ -65,23 +65,43 @@ def compute_the_gradient(
     return grad.detach(), eng.squeeze().item()
 
 
-def compute_the_gradient_2nd_version(
-    m: torch.DoubleTensor,
-    h: torch.DoubleTensor,
-    energy: nn.Module,
+def compute_the_gradient_magn2field(
+    m: torch.DoubleTensor, h: torch.DoubleTensor, model: nn.Module
 ) -> torch.DoubleTensor:
     m = m.detach()
-    m = m.requires_grad_(True)
-    energy.eval()
-    energy = energy
-    eng = energy(z=m, h=h)
-    print(eng.shape)
+
+    h_ml = model(m).unsqueeze(0)
+    h_ml = torch.ones(h_ml.shape[-1])[None, None, :] * h_ml.mean(-1)[:, :, None]
+    h_eff = -1 * (h - h_ml)
+
+    return h_eff
+
+
+def compute_the_gradient_of_the_functional(
+    m: torch.DoubleTensor, model: nn.Module, respect_to: str
+) -> torch.DoubleTensor:
+    m = m.detach()
+
+    if respect_to == "z":
+        z = m[:, 0, :]
+        z.requires_grad_(True)
+        input = torch.cat((z.unsqueeze(1), m[:, 1, :].unsqueeze(1)), dim=1)
+        print(input.shape)
+    elif respect_to == "x":
+        x = m[:, 1, :]
+        x.requires_grad_(True)
+        input = torch.cat((m[:, 0, :].unsqueeze(1), x.unsqueeze(1)), dim=1)
+    eng = model(input)
     eng.backward(torch.ones_like(eng))
     with torch.no_grad():
-        grad = m.grad.clone()
-        m.grad.zero_()
+        if respect_to == "z":
+            grad = z.grad.clone()
+            z.grad.zero_()
+        elif respect_to == "x":
+            grad = x.grad.clone()
+            x.grad.zero_()
 
-    return grad.detach(), eng.squeeze().item()
+    return grad.detach()
 
 
 def initialize_psi_from_z_and_x(
