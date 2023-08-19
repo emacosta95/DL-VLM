@@ -88,7 +88,7 @@ print(z.shape)
 l = z.shape[-1]
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/model_zzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/disorder/model_xxzzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
     map_location="cpu",
 )
 model.eval()
@@ -98,11 +98,10 @@ energy.eval()
 # Implement the Kohm Sham LOOP
 z_target = torch.from_numpy(z).double()
 
-
 # initialization
 exponent_algorithm = True
 self_consistent_step = 1
-steps = 5000
+steps = 2000
 tf = 20.0
 time = torch.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
@@ -139,12 +138,11 @@ periodic = False
 # zz x quench style (?)
 hi = torch.ones((2, l))
 hi[1] = 2.0  # high transverse field
-hi[0] = 10**-4  # low longitudinal field
-
+hi[0] = 1.0
 # define the final external field
 hf = torch.ones((2, l))
 hf[1] = 1.0
-hf[0] = 10**-4
+hf[0] = 1.0
 
 
 # define the delta for the periodic driving
@@ -182,6 +180,13 @@ for q, rate in enumerate(rates):
         size=l,
     )
 
+    ham1 = SpinHamiltonian(
+        direction_couplings=[("x", "x")],
+        pbc=True,
+        coupling_values=[1.0],
+        size=l,
+    )
+
     hamExtX = SpinOperator(
         index=[("x", i) for i in range(l)], coupling=hi[1].detach().numpy(), size=l
     )
@@ -189,7 +194,9 @@ for q, rate in enumerate(rates):
         index=[("z", i) for i in range(l)], coupling=hi[0].detach().numpy(), size=l
     )
 
-    eng, psi0 = np.linalg.eigh(ham0.qutip_op + hamExtZ.qutip_op + hamExtX.qutip_op)
+    eng, psi0 = np.linalg.eigh(
+        ham0.qutip_op + ham1.qutip_op + hamExtZ.qutip_op + hamExtX.qutip_op
+    )
     psi0 = qutip.Qobj(psi0[:, 0], shape=psi0.shape, dims=([[2 for i in range(l)], [1]]))
 
     print("real ground state energy=", eng[0])
@@ -216,7 +223,7 @@ for q, rate in enumerate(rates):
 
     print("\n INITIALIZE THE HAMILTONIAN \n")
     # build up the time dependent object for the qutip evolution
-    hamiltonian = [ham0.qutip_op]
+    hamiltonian = [ham0.qutip_op + ham1.qutip_op]
 
     print("periodic=", periodic, "\n")
     for i in range(l):
@@ -436,7 +443,7 @@ for q, rate in enumerate(rates):
 
         if periodic:
             np.savez(
-                f"data/kohm_sham_approach/results/tddft_periodic_uniform_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_delta_{delta[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_delta_{delta[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
+                f"data/kohm_sham_approach/results/tddft_periodic_uniform_zzxxzx_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_delta_{delta[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_delta_{delta[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
                 x_qutip=x_qutip_tot,
                 z_qutip=z_qutip_tot,
                 z=z_tot,
@@ -452,7 +459,7 @@ for q, rate in enumerate(rates):
 
         else:
             np.savez(
-                f"data/kohm_sham_approach/results/tddft_quench_uniform_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
+                f"data/kohm_sham_approach/results/tddft_quench_uniform_zzxxzx_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
                 x_qutip=x_qutip_tot,
                 z_qutip=z_qutip_tot,
                 z=z_tot,

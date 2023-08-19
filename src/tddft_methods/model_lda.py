@@ -11,8 +11,8 @@ class modelLDA(nn.Module):
     def forward(self, m: torch.Tensor):
         z = m[:, 0, :]
         x = m[:, 1, :]
-        z_poly = z[None, :, :] ** (torch.arange(0, 9, 2))[:, None, None]
-        x_poly = x[None, :, :] ** (torch.arange(0, 9, 2))[:, None, None]
+        z_poly = z[None, :, :] ** (torch.arange(0, 5, 1))[:, None, None]
+        x_poly = x[None, :, :] ** (torch.arange(0, 5, 1))[:, None, None]
         up = torch.zeros_like(z)
         for i in range(5):
             for j in range(5):
@@ -22,4 +22,4 @@ class modelLDA(nn.Module):
             for j in range(4):
                 down = down + self.coeff[25 + 4 * i + j] * z_poly[i] * x_poly[j]
         f_lda = up / down
-        return f_lda
+        return f_lda.squeeze()
