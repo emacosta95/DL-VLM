@@ -77,7 +77,7 @@ class PeriodicDriving:
 
 # %% Data
 data = np.load(
-    "data/kohm_sham_approach/disorder/2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_6000.npz"
+    "data/kohm_sham_approach/disorder/2_input_channel_xxzzxz_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_6000.npz"
 )
 
 
@@ -137,11 +137,11 @@ periodic = False
 # define the initial external field
 # zz x quench style (?)
 hi = torch.ones((2, l))
-hi[1] = 2.0  # high transverse field
+hi[1] = 3.0  # high transverse field
 hi[0] = 1.0
 # define the final external field
 hf = torch.ones((2, l))
-hf[1] = 1.0
+hf[1] = 2.0
 hf[0] = 1.0
 
 
@@ -156,9 +156,9 @@ energy = Energy_XXZX(model=model)
 # %% Compute the initial ground state configuration
 
 gd = GradientDescentKohmSham(
-    loglr=-2,
+    loglr=-3,
     energy=energy,
-    epochs=1000,
+    epochs=5000,
     seed=23,
     num_threads=3,
     device="cpu",

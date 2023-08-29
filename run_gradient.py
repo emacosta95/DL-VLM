@@ -4,7 +4,7 @@ import torch
 import numpy as np
 
 data = np.load(
-    "data/kohm_sham_approach/uniform/reduction_2_input_channel_dataset_h_0.0_2.0_omega_1_j_1_1nn_n_100.npz"
+    "data/kohm_sham_approach/uniform/reduction_dataset_uniform_xxzzxz_h_mixed_0.0_5.0_omega_0.0_5.0_j_1_1nn_n_6000.npz"
 )
 
 ndata = 10
@@ -21,7 +21,7 @@ e_torch = torch.from_numpy(e[:ndata])
 
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/model_zzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/disorder/model_xxzzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
     map_location="cpu",
 )
 model.eval()
@@ -31,13 +31,13 @@ energy = Energy_XXZX(model=model)
 
 gd = gd = GradientDescent(
     n_instances=10,
-    run_name="280723_uniform_0_2_new_model",
+    run_name="230823_uniform_xxzzxz",
     loglr=-1,
     n_init=z_torch,
     cut=2,
     n_ensambles=1,
     energy=energy,
-    target_path="data/kohm_sham_approach/uniform/reduction_2_input_channel_dataset_h_0.0_2.0_omega_1_j_1_1nn_n_100.npz",
+    target_path="data/kohm_sham_approach/uniform/reduction_dataset_uniform_xxzzxz_h_mixed_0.0_5.0_omega_0.0_5.0_j_1_1nn_n_6000.npz",
     epochs=3000,
     variable_lr=False,
     early_stopping=False,
