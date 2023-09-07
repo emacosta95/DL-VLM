@@ -116,6 +116,18 @@ def initialize_psi_from_z_and_x(
     return psi
 
 
+def initialize_psi_from_xyz(
+    z: torch.DoubleTensor, x: torch.DoubleTensor, y: torch.DoubleTensor
+) -> torch.ComplexType:
+    psi = torch.zeros(size=(z.shape[-1], 2), dtype=torch.complex128)
+    exp_teta = x / torch.sqrt(1 - z**2) + 1j * y / torch.sqrt(1 - z**2)
+    a = torch.sqrt((1 - z) / 2)
+    b = torch.sqrt((1 + z) / 2)
+    psi[:, 0] = exp_teta * a
+    psi[:, 1] = b
+    return psi
+
+
 def build_hamiltonian(
     field_x: torch.DoubleTensor, field_z: torch.DoubleTensor
 ) -> torch.ComplexType:
@@ -139,6 +151,23 @@ def compute_the_magnetization(psi: torch.Tensor) -> Tuple[torch.DoubleTensor]:
     z = torch.real(z).double()
 
     return z.detach(), x.detach()
+
+
+def compute_the_full_magnetization(psi: torch.Tensor) -> Tuple[torch.DoubleTensor]:
+    x_operator = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.complex128)
+    z_operator = torch.tensor([[1.0, 0.0], [0.0, -1.0]], dtype=torch.complex128)
+    y_operator = torch.tensor([[0.0, -1j], [1j, 0.0]], dtype=torch.complex128)
+
+    x = torch.einsum("li,ij,lj->l", torch.conj(psi), x_operator, psi)  # .double()
+    z = torch.einsum("li,ij,lj->l", torch.conj(psi), z_operator, psi)  # .double()
+    y = torch.einsum("li,ij,lj->l", torch.conj(psi), y_operator, psi)  # .double()
+
+    x = torch.real(x).double()
+    z = torch.real(z).double()
+    y = torch.real(y).double()
+
+    m = torch.cat((x.unsqueeze(0), y.unsqueeze(0), z.unsqueeze(0)), dim=0)
+    return m
 
 
 def crank_nicolson_algorithm(
@@ -199,14 +228,11 @@ def time_step_backward_algorithm(
 
 def get_the_hamiltonian(psi: torch.ComplexType, h: torch.Tensor, energy: nn.Module):
     x, z = compute_the_magnetization(psi=psi.clone())
-
     z = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
     z = z.unsqueeze(0)  # the batch dimension
-
     h_eff, eng0 = compute_the_gradient(m=z, h=h, energy=energy, respect_to="z")
     omega_eff, _ = compute_the_gradient(m=z, h=h, energy=energy, respect_to="x")
     hamiltonian = build_hamiltonian(field_x=omega_eff[0], field_z=h_eff[0])
-
     return hamiltonian, eng0
 
 
@@ -231,3 +257,70 @@ def time_step_crank_nicolson_algorithm(
         )
 
     return psi, eng
+
+
+def heisemberg_matrix(omega_eff: torch.Tensor, h_eff: torch.Tensor):
+    hm = torch.zeros(omega_eff.shape[-1], 3, 3, dtype=torch.double)
+    hm[:, 0, 1] = h_eff
+    hm[:, 1, 0] = -1 * h_eff
+    hm[:, 1, 2] = omega_eff
+    hm[:, 2, 1] = -1 * omega_eff
+
+    return hm
+
+
+def heisemberg_evolution_runge_kutta_step(
+    m: torch.Tensor, h: torch.Tensor, energy: nn.Module, dt: float, idx: int
+):
+    # first step at t
+    density = torch.cat((m[:, 2].unsqueeze(1), m[:, 0].unsqueeze(1)), dim=1)
+
+    omega_eff = compute_the_gradient(
+        m=density, h=h[idx].unsqueeze(0), energy=energy, respect_to="x"
+    )
+    h_eff = compute_the_gradient(
+        m=density, h=h[idx].unsqueeze(0), energy=energy, respect_to="z"
+    )
+    # this is the zero order t+1 step
+    matrix0 = heisemberg_matrix(omega_eff=-1 * omega_eff[0], h_eff=-1 * h_eff[0])
+    k1 = torch.einsum("lab,ibl->ial", matrix0, m)
+    m0_t_plus_1 = m + dt * k1
+
+    density0_t_plus_1 = torch.cat(
+        (m0_t_plus_1[:, 2].unsqueeze(1), m0_t_plus_1[:, 0].unsqueeze(1)), dim=1
+    )
+    omega_eff_0_t_plus_1 = compute_the_gradient(
+        m=density0_t_plus_1, h=h[idx + 1].unsqueeze(0), energy=energy, respect_to="x"
+    )
+    h_eff_0_t_plus_1 = compute_the_gradient(
+        m=density0_t_plus_1, h=h[idx + 1].unsqueeze(0), energy=energy, respect_to="z"
+    )
+    # compute the matrix at time step t+1/2dt
+    matrix_t_half = 0.5 * (
+        matrix0
+        + heisemberg_matrix(
+            omega_eff=-1 * omega_eff_0_t_plus_1[0], h_eff=-1 * h_eff_0_t_plus_1[0]
+        )
+    )
+    k2 = torch.einsum("lab,ibl->ial", matrix_t_half, m + 0.5 * dt * k1)
+    k3 = torch.einsum("lab,ibl->ial", matrix_t_half, m + 0.5 * dt * k2)
+
+    # compute the matrix at time step t+dt
+    m_t_plus_1 = m + (dt / 5) * (k1 + 2 * k2 + 2 * k3)
+
+    density_t_plus_1 = torch.cat(
+        (m_t_plus_1[:, 2].unsqueeze(1), m_t_plus_1[:, 0].unsqueeze(1)), dim=1
+    )
+    omega_eff_t_plus_1 = compute_the_gradient(
+        m=density_t_plus_1, h=h[idx + 1].unsqueeze(0), energy=energy, respect_to="x"
+    )
+    h_eff_t_plus_1 = compute_the_gradient(
+        m=density_t_plus_1, h=h[idx + 1].unsqueeze(0), energy=energy, respect_to="z"
+    )
+    matrix_t_plus_1 = heisemberg_matrix(
+        omega_eff=-1 * omega_eff_t_plus_1[0], h_eff=-1 * h_eff_t_plus_1[0]
+    )
+
+    k4 = torch.einsum("lab,ibl->ial", matrix_t_plus_1, m + dt * k3)
+
+    return m + (dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4)

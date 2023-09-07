@@ -12,6 +12,7 @@ from src.tddft_methods.kohm_sham_utils import (
     compute_the_gradient,
     build_hamiltonian,
     initialize_psi_from_z_and_x,
+    initialize_psi_from_xyz,
     compute_the_magnetization,
     crank_nicolson_algorithm,
     exponentiation_algorithm,
@@ -77,7 +78,7 @@ class PeriodicDriving:
 
 # %% Data
 data = np.load(
-    "data/kohm_sham_approach/disorder/2_input_channel_xxzzxz_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_6000.npz"
+    "data/kohm_sham_approach/disorder/2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_6000.npz"
 )
 
 
@@ -88,12 +89,12 @@ print(z.shape)
 l = z.shape[-1]
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/model_xxzzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/disorder/model_zzxz_real_reduction_2_input_channel_dataset_h_0.0-2.0_omega_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
     map_location="cpu",
 )
 model.eval()
 model = model.to(dtype=torch.double)
-energy = Energy_XXZX(model=model)
+energy = Energy_reduction_XXZX(model=model)
 energy.eval()
 # Implement the Kohm Sham LOOP
 z_target = torch.from_numpy(z).double()
@@ -101,8 +102,8 @@ z_target = torch.from_numpy(z).double()
 # initialization
 exponent_algorithm = True
 self_consistent_step = 1
-steps = 2000
-tf = 20.0
+steps = 1000
+tf = 10.0
 time = torch.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
 
@@ -137,20 +138,18 @@ periodic = False
 # define the initial external field
 # zz x quench style (?)
 hi = torch.ones((2, l))
-hi[1] = 3.0  # high transverse field
-hi[0] = 1.0
+hi[1] = 2.0  # high transverse field
+hi[0] = 0.001
 # define the final external field
 hf = torch.ones((2, l))
-hf[1] = 2.0
-hf[0] = 1.0
+hf[1] = 1.0
+hf[0] = 0.001
 
 
 # define the delta for the periodic driving
 delta = torch.ones((2, l))
 delta[1] = 0.9
 delta[0] = 0.0
-
-energy = Energy_XXZX(model=model)
 
 
 # %% Compute the initial ground state configuration
@@ -194,9 +193,7 @@ for q, rate in enumerate(rates):
         index=[("z", i) for i in range(l)], coupling=hi[0].detach().numpy(), size=l
     )
 
-    eng, psi0 = np.linalg.eigh(
-        ham0.qutip_op + ham1.qutip_op + hamExtZ.qutip_op + hamExtX.qutip_op
-    )
+    eng, psi0 = np.linalg.eigh(ham0.qutip_op + hamExtZ.qutip_op + hamExtX.qutip_op)
     psi0 = qutip.Qobj(psi0[:, 0], shape=psi0.shape, dims=([[2 for i in range(l)], [1]]))
 
     print("real ground state energy=", eng[0])
@@ -223,7 +220,7 @@ for q, rate in enumerate(rates):
 
     print("\n INITIALIZE THE HAMILTONIAN \n")
     # build up the time dependent object for the qutip evolution
-    hamiltonian = [ham0.qutip_op + ham1.qutip_op]
+    hamiltonian = [ham0.qutip_op]
 
     print("periodic=", periodic, "\n")
     for i in range(l):
@@ -286,6 +283,7 @@ for q, rate in enumerate(rates):
 
     #  Kohm Sham step 1) Initialize the state from an initial magnetization
     psi = initialize_psi_from_z_and_x(z=-1 * zi[0], x=zi[1])
+    # psi = initialize_psi_from_xyz(z=-1 * zi[0], x=zi[1], y=torch.zeros_like(zi[1]))
 
     t_bar = tqdm(enumerate(time))
     for i in trange(time.shape[0]):
@@ -459,7 +457,7 @@ for q, rate in enumerate(rates):
 
         else:
             np.savez(
-                f"data/kohm_sham_approach/results/tddft_quench_uniform_zzxxzx_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
+                f"data/kohm_sham_approach/results/reduction/tddft_quench_uniform_model_h_0_2_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
                 x_qutip=x_qutip_tot,
                 z_qutip=z_qutip_tot,
                 z=z_tot,
