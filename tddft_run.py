@@ -89,12 +89,12 @@ print(z.shape)
 l = z.shape[-1]
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/model_zzxz_real_reduction_2_input_channel_dataset_h_0.0-2.0_omega_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/disorder/model_xxzzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
     map_location="cpu",
 )
 model.eval()
 model = model.to(dtype=torch.double)
-energy = Energy_reduction_XXZX(model=model)
+energy = Energy_XXZX(model=model)
 energy.eval()
 # Implement the Kohm Sham LOOP
 z_target = torch.from_numpy(z).double()
@@ -118,9 +118,11 @@ h_tot = np.zeros((ndata, steps, 2, l))
 z_qutip_tot = np.zeros((ndata, steps, l))
 z_tot = np.zeros((ndata, steps, l))
 x_qutip_tot = np.zeros((ndata, steps, l))
+y_qutip_tot = np.zeros((ndata, steps, l))
 
 
 x_tot = np.zeros((ndata, steps, l))
+y_tot = np.zeros((ndata, steps, l))
 eng_tot_z = np.zeros((ndata, steps))
 eng_tot_x = np.zeros((ndata, steps))
 eng_tot = np.zeros((ndata, steps))
@@ -139,11 +141,11 @@ periodic = False
 # zz x quench style (?)
 hi = torch.ones((2, l))
 hi[1] = 2.0  # high transverse field
-hi[0] = 0.001
+hi[0] = 0.5
 # define the final external field
 hf = torch.ones((2, l))
 hf[1] = 1.0
-hf[0] = 0.001
+hf[0] = 0.5
 
 
 # define the delta for the periodic driving
@@ -179,13 +181,6 @@ for q, rate in enumerate(rates):
         size=l,
     )
 
-    ham1 = SpinHamiltonian(
-        direction_couplings=[("x", "x")],
-        pbc=True,
-        coupling_values=[1.0],
-        size=l,
-    )
-
     hamExtX = SpinOperator(
         index=[("x", i) for i in range(l)], coupling=hi[1].detach().numpy(), size=l
     )
@@ -209,14 +204,18 @@ for q, rate in enumerate(rates):
     # compute and check the magnetizations
     obs: List[qutip.Qobj] = []
     obs_x: List[qutip.Qobj] = []
+    obs_y: List[qutip.Qobj] = []
     for i in range(l):
         z_op = SpinOperator(index=[("z", i)], coupling=[1.0], size=l, verbose=1)
-        # print(f"x[{i}]=", x.qutip_op, "\n")
         x_op = SpinOperator(index=[("x", i)], coupling=[1.0], size=l, verbose=0)
+        y_op = SpinOperator(index=[("y", i)], coupling=[1.0], size=l, verbose=0)
+
         print(z_op.expect_value(psi=psi0) - zi[0, i].detach().numpy())
         print(x_op.expect_value(psi=psi0) - zi[1, i].detach().numpy())
+
         obs.append(z_op.qutip_op)
         obs_x.append(x_op.qutip_op)
+        obs_y.append(y_op.qutip_op)
 
     print("\n INITIALIZE THE HAMILTONIAN \n")
     # build up the time dependent object for the qutip evolution
@@ -271,15 +270,17 @@ for q, rate in enumerate(rates):
 
     # evolution
 
-    output = qutip.sesolve(hamiltonian, psi0, time.detach().numpy(), e_ops=obs + obs_x)
+    output = qutip.sesolve(
+        hamiltonian, psi0, time.detach().numpy(), e_ops=obs + obs_x + obs_y
+    )
 
     # %% visualization
     for r in range(l):
         z_qutip_tot[q, :, r] = output.expect[r]
         m_qutip_tot[q, :, 0, r] = output.expect[r]
-    for r in range(l):
         x_qutip_tot[q, :, r] = output.expect[l + r]
         m_qutip_tot[q, :, 1, r] = output.expect[l + r]
+        y_qutip_tot[q, :, r] = output.expect[2 * l + r]
 
     #  Kohm Sham step 1) Initialize the state from an initial magnetization
     psi = initialize_psi_from_z_and_x(z=-1 * zi[0], x=zi[1])
@@ -290,13 +291,13 @@ for q, rate in enumerate(rates):
         t = time[i]
         #  Kohm Sham step 2) Build up the fields
         if i == len(time) - 1:
-            z, x = compute_the_magnetization(psi=psi)
+            z, x, y = compute_the_magnetization(psi=psi)
             # uniform condition (brute force)
 
             m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
             m = m.unsqueeze(0)  # the batch dimension
 
-            z0, x0 = compute_the_magnetization(psi=psi)
+            z0, x0, _ = compute_the_magnetization(psi=psi)
             m0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
             m0 = m0.unsqueeze(0)  # the batch dimension
 
@@ -322,7 +323,7 @@ for q, rate in enumerate(rates):
                 )
 
             for step in range(self_consistent_step):
-                z1, x1 = compute_the_magnetization(psi=psi1)
+                z1, x1, _ = compute_the_magnetization(psi=psi1)
                 m1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
                 m1 = m1.unsqueeze(0)  # the batch dimension
 
@@ -358,7 +359,7 @@ for q, rate in enumerate(rates):
                 )
 
         else:
-            z, x = compute_the_magnetization(psi=psi)
+            z, x, y = compute_the_magnetization(psi=psi)
             m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
             m = m.unsqueeze(0)  # the batch dimension
 
@@ -368,7 +369,7 @@ for q, rate in enumerate(rates):
 
             eng = energy(m, h[i].unsqueeze(0))[0].item()
 
-            z0, x0 = compute_the_magnetization(psi=psi)
+            z0, x0, _ = compute_the_magnetization(psi=psi)
             m0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
             m0 = m0.unsqueeze(0)  # the batch dimension
 
@@ -394,7 +395,7 @@ for q, rate in enumerate(rates):
                 )
 
             for step in range(self_consistent_step):
-                z1, x1 = compute_the_magnetization(psi=psi1)
+                z1, x1, _ = compute_the_magnetization(psi=psi1)
                 m1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
                 m1 = m1.unsqueeze(0)  # the batch dimension
 
@@ -436,6 +437,7 @@ for q, rate in enumerate(rates):
 
         z_tot[q, i, :] = m[0, 0].detach().numpy()
         x_tot[q, i, :] = m[0, 1].detach().numpy()
+        y_tot[q, i, :] = y[0].detach().numpy()
         gradients_tot[q, i, 1, :] = -1 * omega_eff[0].detach().numpy()
         gradients_tot[q, i, 0, :] = -1 * h_eff[0].detach().numpy()
 
@@ -444,8 +446,10 @@ for q, rate in enumerate(rates):
                 f"data/kohm_sham_approach/results/tddft_periodic_uniform_zzxxzx_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_delta_{delta[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_delta_{delta[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
                 x_qutip=x_qutip_tot,
                 z_qutip=z_qutip_tot,
+                y_qutip=y_qutip_tot,
                 z=z_tot,
                 x=x_tot,
+                y=y_tot,
                 potential=h_tot,
                 energy_x=eng_tot_x,
                 energy_z=eng_tot_z,
@@ -457,11 +461,13 @@ for q, rate in enumerate(rates):
 
         else:
             np.savez(
-                f"data/kohm_sham_approach/results/reduction/tddft_quench_uniform_model_h_0_2_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
+                f"data/kohm_sham_approach/results/dl_functional/tddft_quench_uniform_model_h_0_2_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
                 x_qutip=x_qutip_tot,
                 z_qutip=z_qutip_tot,
                 z=z_tot,
                 x=x_tot,
+                y=y_tot,
+                y_qutip=y_qutip_tot,
                 potential=h_tot,
                 energy_x=eng_tot_x,
                 energy_z=eng_tot_z,

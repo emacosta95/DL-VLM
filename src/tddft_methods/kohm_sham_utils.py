@@ -143,14 +143,17 @@ def build_hamiltonian(
 def compute_the_magnetization(psi: torch.Tensor) -> Tuple[torch.DoubleTensor]:
     x_operator = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.complex128)
     z_operator = torch.tensor([[1.0, 0.0], [0.0, -1.0]], dtype=torch.complex128)
+    y_operator = torch.tensor([[0.0, -1j], [1j, 0.0]], dtype=torch.complex128)
 
     x = torch.einsum("li,ij,lj->l", torch.conj(psi), x_operator, psi)  # .double()
     z = torch.einsum("li,ij,lj->l", torch.conj(psi), z_operator, psi)  # .double()
+    y = torch.einsum("li,ij,lj->l", torch.conj(psi), y_operator, psi)  # .double()
 
     x = torch.real(x).double()
     z = torch.real(z).double()
+    y = torch.real(y).double()
 
-    return z.detach(), x.detach()
+    return z.detach(), x.detach(), y.detach()
 
 
 def compute_the_full_magnetization(psi: torch.Tensor) -> Tuple[torch.DoubleTensor]:
@@ -188,9 +191,9 @@ def crank_nicolson_algorithm(
 
 
 def exponentiation_algorithm(
-    hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float
+    hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float, l: int
 ):
-    identity = torch.tensor([[1.0, 0.0], [0.0, 1.0]], dtype=torch.complex128)
+    identity = torch.eye(l, dtype=torch.complex128)
     p_1 = -1j * dt * hamiltonian.clone()
     p_2 = (-1j * dt) * torch.einsum("lab,lbc->lac", p_1, hamiltonian)
     p_3 = (-1j * dt) * torch.einsum("lab,lbc->lac", p_2, hamiltonian)
