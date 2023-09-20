@@ -15,7 +15,7 @@ from src.tddft_methods.kohm_sham_utils import (
     initialize_psi_from_xyz,
     compute_the_magnetization,
     crank_nicolson_algorithm,
-    exponentiation_algorithm,
+    me_exponentiation_algorithm,
 )
 from src.gradient_descent import GradientDescentKohmSham
 import qutip
@@ -89,7 +89,7 @@ print(z.shape)
 l = z.shape[-1]
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/model_xxzzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/disorder/model_zzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
     map_location="cpu",
 )
 model.eval()
@@ -282,12 +282,12 @@ for q, rate in enumerate(rates):
         m_qutip_tot[q, :, 1, r] = output.expect[l + r]
         y_qutip_tot[q, :, r] = output.expect[2 * l + r]
 
-    #  Kohm Sham step 1) Initialize the state from an initial magnetization
-    psi = torch.zeros((3, l), dtype=torch.complex128)
-    psi[0] = zi[1].double()
-    psi[1] = torch.zeros(l, dtype=torch.double)
-    psi[2] = zi[0].double()
     # psi = initialize_psi_from_xyz(z=-1 * zi[0], x=zi[1], y=torch.zeros_like(zi[1]))
+    #  Kohm Sham step 1) Initialize the state from an initial magnetization
+    psi = torch.zeros((l, 3), dtype=torch.complex128)
+    psi[:, 0] = zi[1].double()
+    psi[:, 1] = torch.zeros(l, dtype=torch.double)
+    psi[:, 2] = zi[0].double()
 
     t_bar = tqdm(enumerate(time))
     for i in trange(time.shape[0]):
@@ -295,17 +295,17 @@ for q, rate in enumerate(rates):
         #  Kohm Sham step 2) Build up the fields
         if i == len(time) - 1:
             # compute magnetization
-            # z, x, y = compute_the_magnetization(psi=psi)
-            z = psi[2].double()
-            y = psi[1].double()
-            x = psi[0].double()
+            z = psi[:, 2].double()
+            y = psi[:, 1].double()
+            x = psi[:, 0].double()
             # uniform condition (brute force)
 
             # compute the magnetization for the functional derivatives
             m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
             m = m.unsqueeze(0)  # the batch dimension
 
-            z0, x0, _ = compute_the_magnetization(psi=psi)
+            z0 = psi[:, 2].double()
+            x0 = psi[:, 0].double()
             m0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
             m0 = m0.unsqueeze(0)  # the batch dimension
 
@@ -317,23 +317,25 @@ for q, rate in enumerate(rates):
             )
 
             hamiltonian0 = torch.zeros((l, 3, 3), dtype=torch.complex128)
-            hamiltonian0[:, 0, 1] = h_eff[0]
-            hamiltonian0[:, 1, 0] = -1 * h_eff[0]
-            hamiltonian0[:, 0, 2] = -1 * omega_eff[0]
-            hamiltonian0[:, 2, 2] = 1 * omega_eff[0]
+            hamiltonian0[:, 0, 1] = -1 * h_eff[0]
+            hamiltonian0[:, 1, 0] = 1 * h_eff[0]
+            hamiltonian0[:, 1, 2] = -1 * omega_eff[0]
+            hamiltonian0[:, 2, 1] = 1 * omega_eff[0]
 
             # hamiltonian0 = build_hamiltonian(
             #     field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
             # )
 
-            psi1 = exponentiation_algorithm(
-                hamiltonian=hamiltonian0, psi=psi, dt=dt, l=3
+            psi1 = me_exponentiation_algorithm(
+                hamiltonian=hamiltonian0,
+                psi=psi,
+                dt=dt,
             )
 
             for step in range(self_consistent_step):
                 # compute magnetization for the functional derivative
-                z1 = psi[2].double()
-                x1 = psi[0].double()
+                z1 = psi[:, 2].double()
+                x1 = psi[:, 0].double()
                 m1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
                 m1 = m1.unsqueeze(0)  # the batch dimension
 
@@ -347,35 +349,37 @@ for q, rate in enumerate(rates):
                 )
 
                 hamiltonian1 = torch.zeros((l, 3, 3), dtype=torch.complex128)
-                hamiltonian1[:, 0, 1] = h_eff[0]
-                hamiltonian1[:, 1, 0] = -1 * h_eff[0]
-                hamiltonian1[:, 0, 2] = -1 * omega_eff[0]
-                hamiltonian1[:, 2, 2] = 1 * omega_eff[0]
+                hamiltonian1[:, 0, 1] = -1 * h_eff[0]
+                hamiltonian1[:, 1, 0] = h_eff[0]
+                hamiltonian1[:, 1, 2] = -1 * omega_eff[0]
+                hamiltonian1[:, 2, 1] = omega_eff[0]
 
                 # hamiltonian1 = build_hamiltonian(
                 #     field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
                 # )
 
-                psi1 = exponentiation_algorithm(
-                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt, l=3
+                psi1 = me_exponentiation_algorithm(
+                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1),
+                    psi=psi,
+                    dt=dt,
                 )
 
-            psi = exponentiation_algorithm(
-                hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt, l=3
+            psi = me_exponentiation_algorithm(
+                hamiltonian=0.5 * (hamiltonian0 + hamiltonian1),
+                psi=psi,
+                dt=dt,
             )
 
         else:
             # compute the magnetization
-            x = psi[0].double()
-            z = psi[2].double()
-            # z, x, y = compute_the_magnetization(psi=psi)
+            x = psi[:, 0].double()
+            z = psi[:, 2].double()
 
             m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
             m = m.unsqueeze(0)  # the batch dimension
 
-            x0 = psi[0].double()
-            z0 = psi[2].double()
-            # z0, x0, _ = compute_the_magnetization(psi=psi)
+            x0 = psi[:, 0].double()
+            z0 = psi[:, 2].double()
             m0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
             m0 = m0.unsqueeze(0)  # the batch dimension
 
@@ -389,21 +393,23 @@ for q, rate in enumerate(rates):
             )
 
             hamiltonian0 = torch.zeros((l, 3, 3), dtype=torch.complex128)
-            hamiltonian0[:, 0, 1] = h_eff[0]
-            hamiltonian0[:, 1, 0] = -1 * h_eff[0]
-            hamiltonian0[:, 0, 2] = -1 * omega_eff[0]
-            hamiltonian0[:, 2, 2] = 1 * omega_eff[0]
+            hamiltonian0[:, 0, 1] = -1 * h_eff[0]
+            hamiltonian0[:, 1, 0] = 1 * h_eff[0]
+            hamiltonian0[:, 1, 2] = -1 * omega_eff[0]
+            hamiltonian0[:, 2, 1] = 1 * omega_eff[0]
 
             # hamiltonian0 = build_hamiltonian(
             #     field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
             # )
-            psi1 = exponentiation_algorithm(
-                hamiltonian=hamiltonian0, psi=psi, dt=dt, l=3
+            psi1 = me_exponentiation_algorithm(
+                hamiltonian=hamiltonian0,
+                psi=psi,
+                dt=dt,
             )
 
             for step in range(self_consistent_step):
-                x1 = psi[0].double()
-                z1 = psi[2].double()
+                x1 = psi[:, 0].double()
+                z1 = psi[:, 2].double()
 
                 # z1, x1, _ = compute_the_magnetization(psi=psi1)
                 m1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
@@ -419,32 +425,31 @@ for q, rate in enumerate(rates):
                 )
 
                 hamiltonian1 = torch.zeros((l, 3, 3), dtype=torch.complex128)
-                hamiltonian1[:, 0, 1] = h_eff[0]
-                hamiltonian1[:, 1, 0] = -1 * h_eff[0]
-                hamiltonian1[:, 0, 2] = -1 * omega_eff[0]
-                hamiltonian1[:, 2, 2] = 1 * omega_eff[0]
+                hamiltonian1[:, 0, 1] = -1 * h_eff[0]
+                hamiltonian1[:, 1, 0] = 1 * h_eff[0]
+                hamiltonian1[:, 1, 2] = -1 * omega_eff[0]
+                hamiltonian1[:, 2, 1] = omega_eff[0]
 
-                hamiltonian1 = build_hamiltonian(
-                    field_x=-1 * omega_eff1[0], field_z=-1 * h_eff1[0]
+                psi1 = me_exponentiation_algorithm(
+                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1),
+                    psi=psi,
+                    dt=dt,
                 )
 
-                psi1 = exponentiation_algorithm(
-                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt, l=3
-                )
-
-            psi = exponentiation_algorithm(
-                hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt, l=3
+            psi = me_exponentiation_algorithm(
+                hamiltonian=0.5 * (hamiltonian0 + hamiltonian1),
+                psi=psi,
+                dt=dt,
             )
 
         eng_tot_z[q, i] = engz
         eng_tot_x[q, i] = engx
 
         eng_tot[q, i] = eng
-        eng_qutip_tot[q, i] = eng_qutip
 
-        z_tot[q, i, :] = psi[2].detach().numpy()
-        x_tot[q, i, :] = psi[0].detach().numpy()
-        y_tot[q, i, :] = psi[1].detach().numpy()
+        z_tot[q, i, :] = psi[:, 2].double().detach().numpy()
+        x_tot[q, i, :] = psi[:, 0].double().detach().numpy()
+        y_tot[q, i, :] = psi[:, 1].double().detach().numpy()
         gradients_tot[q, i, 1, :] = -1 * omega_eff[0].detach().numpy()
         gradients_tot[q, i, 0, :] = -1 * h_eff[0].detach().numpy()
 

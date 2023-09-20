@@ -202,8 +202,19 @@ def exponentiation_algorithm(
     unitary = (
         identity[None, :, :] + p_1 + p_2 / 2 + p_3 / (2 * 3) + p_4 / (2 * 3 * 4)
     )  # torch.matrix_exp(-1j * dt * hamiltonian)
+
     psi = torch.einsum("lab,lb->la", unitary, psi)
-    psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
+    if l == 2:  # just in the pure state configuration
+        psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
+    return psi
+
+
+def me_exponentiation_algorithm(
+    hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float
+):
+    unitary = torch.matrix_exp(dt * hamiltonian)
+
+    psi = torch.einsum("lab,lb->la", unitary, psi)
     return psi
 
 
