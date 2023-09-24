@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch.nn as nn
 from typing import Tuple
+from tqdm import trange
 
 
 def quench_field(
@@ -43,7 +44,6 @@ def compute_the_gradient(
     m: torch.DoubleTensor, h: torch.DoubleTensor, energy: nn.Module, respect_to: str
 ) -> torch.DoubleTensor:
     m = m.detach()
-
     if respect_to == "z":
         z = m[:, 0, :]
         z.requires_grad_(True)
@@ -61,7 +61,6 @@ def compute_the_gradient(
         elif respect_to == "x":
             grad = x.grad.clone()
             x.grad.zero_()
-
     return grad.detach(), eng.squeeze().item()
 
 
@@ -191,9 +190,9 @@ def crank_nicolson_algorithm(
 
 
 def exponentiation_algorithm(
-    hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float, l: int
+    hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float
 ):
-    identity = torch.eye(l, dtype=torch.complex128)
+    identity = torch.eye(2, dtype=torch.complex128)
     p_1 = -1j * dt * hamiltonian.clone()
     p_2 = (-1j * dt) * torch.einsum("lab,lbc->lac", p_1, hamiltonian)
     p_3 = (-1j * dt) * torch.einsum("lab,lbc->lac", p_2, hamiltonian)
@@ -204,15 +203,26 @@ def exponentiation_algorithm(
     )  # torch.matrix_exp(-1j * dt * hamiltonian)
 
     psi = torch.einsum("lab,lb->la", unitary, psi)
-    if l == 2:  # just in the pure state configuration
-        psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
+    psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
     return psi
 
 
 def me_exponentiation_algorithm(
     hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float
 ):
-    unitary = torch.matrix_exp(dt * hamiltonian)
+    identity = torch.eye(3)
+
+    uni_dt_half = (
+        identity[None, :, :] - (dt / 2) * hamiltonian
+    )  # torch.matrix_exp(-dt * hamiltonian)
+    uni_df_half = torch.linalg.inv(identity[None, :, :] + (dt / 2) * hamiltonian)
+    unitary = torch.einsum("lab,lbc->lac", uni_df_half, uni_dt_half)
+
+    # print(
+    #     "unitary eig",
+    #     torch.real(torch.linalg.eig(unitary)[0]) ** 2
+    #     + torch.imag(torch.linalg.eig(unitary)[0]) ** 2,
+    # )
 
     psi = torch.einsum("lab,lb->la", unitary, psi)
     return psi
@@ -338,3 +348,182 @@ def heisemberg_evolution_runge_kutta_step(
     k4 = torch.einsum("lab,ibl->ial", matrix_t_plus_1, m + dt * k3)
 
     return m + (dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+
+def nonlinear_master_equation_step(
+    psi: torch.Tensor,
+    energy: torch.nn.Module,
+    i: int,
+    h: torch.Tensor,
+    self_consistent_step: int,
+    dt: float,
+    eta: float,
+):
+    x = psi[:, 0].double()
+    z = psi[:, 2].double()
+
+    m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
+    m = m.unsqueeze(0)  # the batch dimension
+
+    x0 = psi[:, 0].double()
+    z0 = psi[:, 2].double()
+    m0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
+    m0 = m0.unsqueeze(0)  # the batch dimension
+
+    # m0 = torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0)
+
+    omega_eff, engx = compute_the_gradient(
+        m=m0, h=h[i].unsqueeze(0), energy=energy, respect_to="x"
+    )
+    h_eff, engz = compute_the_gradient(
+        m=m0, h=h[i].unsqueeze(0), energy=energy, respect_to="z"
+    )
+
+    hamiltonian0 = torch.zeros((psi.shape[0], 3, 3))
+    hamiltonian0[:, 0, 1] = -1 * h_eff[0]
+    hamiltonian0[:, 1, 0] = 1 * h_eff[0]
+    hamiltonian0[:, 1, 2] = -1 * omega_eff[0]
+    hamiltonian0[:, 2, 1] = 1 * omega_eff[0]
+
+    # hamiltonian0 = build_hamiltonian(
+    #     field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+    # )
+    psi0 = me_exponentiation_algorithm(
+        hamiltonian=hamiltonian0,
+        psi=psi,
+        dt=dt,
+    )
+
+    for step in range(self_consistent_step):
+        x1 = psi0[:, 0].double()
+        z1 = psi0[:, 2].double()
+
+        # z1, x1, _ = compute_the_magnetization(psi=psi1)
+        m1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
+        m1 = m1.unsqueeze(0)  # the batch dimension
+
+        # m1 = torch.from_numpy(m_qutip_tot[q, i + 1]).unsqueeze(0)
+
+        omega_eff1, eng = compute_the_gradient(
+            m=m1, h=h[i + 1], energy=energy, respect_to="x"
+        )
+        h_eff1, _ = compute_the_gradient(
+            m=m1, h=h[i + 1], energy=energy, respect_to="z"
+        )
+
+        hamiltonian1 = torch.zeros((psi.shape[0], 3, 3))
+        hamiltonian1[:, 0, 1] = -1 * h_eff1[0]
+        hamiltonian1[:, 1, 0] = 1 * h_eff1[0]
+        hamiltonian1[:, 1, 2] = -1 * omega_eff1[0]
+        hamiltonian1[:, 2, 1] = 1 * omega_eff1[0]
+
+        psi1 = me_exponentiation_algorithm(
+            hamiltonian=0.5 * (hamiltonian0 + hamiltonian1),
+            psi=psi0,
+            dt=dt,
+        )
+        psi0 = psi0 * (1 - eta) + eta * psi1
+
+    psi = me_exponentiation_algorithm(
+        hamiltonian=0.5 * (hamiltonian0 + hamiltonian1),
+        psi=psi,
+        dt=dt,
+    )
+
+    return (
+        psi,
+        engx,
+        engz,
+        omega_eff,
+        h_eff,
+    )
+
+
+def nonlinear_schrodinger_step(
+    psi: torch.Tensor,
+    energy: torch.nn.Module,
+    i: int,
+    h: torch.Tensor,
+    self_consistent_step: int,
+    dt: float,
+    eta: float,
+    exponent_algorithm: bool,
+):
+    z, x, y = compute_the_magnetization(psi=psi)
+    m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
+    m = m.unsqueeze(0)  # the batch dimension
+
+    eng = energy(m, h[i].unsqueeze(0))[0].item()
+
+    z_minus, x_minus, _ = compute_the_magnetization(psi=psi)
+    m_minus = torch.cat((z_minus.view(1, -1), x_minus.view(1, -1)), dim=0)
+    m_minus = m_minus.unsqueeze(0)  # the batch dimension
+
+    # m0 = torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0)
+
+    omega_eff, engx = compute_the_gradient(
+        m=m_minus, h=h[i].unsqueeze(0), energy=energy, respect_to="x"
+    )
+    h_eff, engz = compute_the_gradient(
+        m=m_minus, h=h[i].unsqueeze(0), energy=energy, respect_to="z"
+    )
+
+    hamiltonian_minus = build_hamiltonian(
+        field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+    )
+    if exponent_algorithm:
+        psi_minus = exponentiation_algorithm(
+            hamiltonian=hamiltonian_minus, psi=psi, dt=dt
+        )
+    else:
+        psi_minus = crank_nicolson_algorithm(
+            hamiltonian=hamiltonian_minus, psi=psi, dt=dt
+        )
+
+    hamiltonian_plus = hamiltonian_minus.clone()
+
+    for step in trange(self_consistent_step):
+        if exponent_algorithm:
+            psi_plus = exponentiation_algorithm(
+                hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+                psi=psi,
+                dt=dt,
+            )
+        else:
+            psi_plus = crank_nicolson_algorithm(
+                hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+                psi=psi,
+                dt=dt,
+            )
+
+        z_plus, x_plus, _ = compute_the_magnetization(psi=psi_plus)
+        m_plus = torch.cat((z_plus.view(1, -1), x_plus.view(1, -1)), dim=0)
+        m_plus = m_plus.unsqueeze(0)  # the batch dimension
+
+        # m1 = torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0)
+
+        omega_eff, eng = compute_the_gradient(
+            m=m_plus, h=h[i].unsqueeze(0), energy=energy, respect_to="x"
+        )
+        h_eff, _ = compute_the_gradient(
+            m=m_plus, h=h[i].unsqueeze(0), energy=energy, respect_to="z"
+        )
+
+        hamiltonian_plus = build_hamiltonian(
+            field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+        )
+
+    if exponent_algorithm:
+        psi = exponentiation_algorithm(
+            hamiltonian=0.5 * (hamiltonian_plus + hamiltonian_minus),
+            psi=psi,
+            dt=dt,
+        )
+    else:
+        psi = crank_nicolson_algorithm(
+            hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+            psi=psi,
+            dt=dt,
+        )
+
+    return psi, omega_eff, h_eff, eng, x, y, z

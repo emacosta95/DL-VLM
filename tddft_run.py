@@ -12,10 +12,7 @@ from src.tddft_methods.kohm_sham_utils import (
     compute_the_gradient,
     build_hamiltonian,
     initialize_psi_from_z_and_x,
-    initialize_psi_from_xyz,
-    compute_the_magnetization,
-    crank_nicolson_algorithm,
-    exponentiation_algorithm,
+    nonlinear_schrodinger_step,
 )
 from src.gradient_descent import GradientDescentKohmSham
 import qutip
@@ -89,7 +86,7 @@ print(z.shape)
 l = z.shape[-1]
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/model_xxzzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/disorder/model_zzxz_2_input_channel_dataset_h_mixed_0.0_5.0_h_0.0-2.0_j_1_1nn_n_500k_unet_l_train_8_[40, 40, 40, 40, 40, 40]_hc_5_ks_1_ps_6_nconv_0_nblock",
     map_location="cpu",
 )
 model.eval()
@@ -102,6 +99,7 @@ z_target = torch.from_numpy(z).double()
 # initialization
 exponent_algorithm = True
 self_consistent_step = 1
+eta = 0.1
 steps = 1000
 tf = 10.0
 time = torch.linspace(0.0, tf, steps)
@@ -111,6 +109,7 @@ ndata = 10
 rates = np.linspace(0.0, 0.2, ndata)
 
 rates = np.array([0.0, 0.01, 0.05, 0.1, 0.5, 1, 1.5])
+rates = np.array([0.1])
 ndata = rates.shape[0]
 
 
@@ -159,7 +158,7 @@ delta[0] = 0.0
 gd = GradientDescentKohmSham(
     loglr=-3,
     energy=energy,
-    epochs=5000,
+    epochs=10000,
     seed=23,
     num_threads=3,
     device="cpu",
@@ -287,225 +286,66 @@ for q, rate in enumerate(rates):
     # psi = initialize_psi_from_xyz(z=-1 * zi[0], x=zi[1], y=torch.zeros_like(zi[1]))
 
     t_bar = tqdm(enumerate(time))
-    for i in trange(time.shape[0]):
+    for i in trange(time.shape[0] - 1):
         t = time[i]
-        #  Kohm Sham step 2) Build up the fields
-        if i == len(time) - 1:
-            z, x, y = compute_the_magnetization(psi=psi)
-            # uniform condition (brute force)
+        eng_qutip = energy(
+            torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0), h[i].unsqueeze(0)
+        )[0].item()
 
-            m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
-            m = m.unsqueeze(0)  # the batch dimension
-
-            z0, x0, _ = compute_the_magnetization(psi=psi)
-            m0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
-            m0 = m0.unsqueeze(0)  # the batch dimension
-
-            # m0 = torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0)
-
-            omega_eff, eng = compute_the_gradient(
-                m=m0, h=h[i].unsqueeze(0), energy=energy, respect_to="x"
-            )
-            h_eff, _ = compute_the_gradient(
-                m=m0, h=h[i].unsqueeze(0), energy=energy, respect_to="z"
-            )
-
-            hamiltonian0 = build_hamiltonian(
-                field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
-            )
-            if exponent_algorithm:
-                psi1 = exponentiation_algorithm(
-                    hamiltonian=hamiltonian0, psi=psi, dt=dt
-                )
-            else:
-                psi1 = crank_nicolson_algorithm(
-                    hamiltonian=hamiltonian0, psi=psi, dt=dt
-                )
-
-            for step in range(self_consistent_step):
-                z1, x1, _ = compute_the_magnetization(psi=psi1)
-                m1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
-                m1 = m1.unsqueeze(0)  # the batch dimension
-
-                # m1 = torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0)
-
-                omega_eff, eng = compute_the_gradient(
-                    m=m1, h=h[i].unsqueeze(0), energy=energy, respect_to="x"
-                )
-                h_eff, _ = compute_the_gradient(
-                    m=m1, h=h[i].unsqueeze(0), energy=energy, respect_to="z"
-                )
-
-                hamiltonian1 = build_hamiltonian(
-                    field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
-                )
-
-                if exponent_algorithm:
-                    psi1 = exponentiation_algorithm(
-                        hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                    )
-                else:
-                    psi1 = crank_nicolson_algorithm(
-                        hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                    )
-
-            if exponent_algorithm:
-                psi = exponentiation_algorithm(
-                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                )
-            else:
-                psi = crank_nicolson_algorithm(
-                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                )
-
-        else:
-            z, x, y = compute_the_magnetization(psi=psi)
-            m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
-            m = m.unsqueeze(0)  # the batch dimension
-
-            eng_qutip = energy(
-                torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0), h[i].unsqueeze(0)
-            )[0].item()
-
-            eng = energy(m, h[i].unsqueeze(0))[0].item()
-
-            z0, x0, _ = compute_the_magnetization(psi=psi)
-            m0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
-            m0 = m0.unsqueeze(0)  # the batch dimension
-
-            # m0 = torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0)
-
-            omega_eff, engx = compute_the_gradient(
-                m=m0, h=h[i].unsqueeze(0), energy=energy, respect_to="x"
-            )
-            h_eff, engz = compute_the_gradient(
-                m=m0, h=h[i].unsqueeze(0), energy=energy, respect_to="z"
-            )
-
-            hamiltonian0 = build_hamiltonian(
-                field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
-            )
-            if exponent_algorithm:
-                psi1 = exponentiation_algorithm(
-                    hamiltonian=hamiltonian0, psi=psi, dt=dt
-                )
-            else:
-                psi1 = crank_nicolson_algorithm(
-                    hamiltonian=hamiltonian0, psi=psi, dt=dt
-                )
-
-            for step in range(self_consistent_step):
-                z1, x1, _ = compute_the_magnetization(psi=psi1)
-                m1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
-                m1 = m1.unsqueeze(0)  # the batch dimension
-
-                # m1 = torch.from_numpy(m_qutip_tot[q, i + 1]).unsqueeze(0)
-
-                omega_eff1, eng = compute_the_gradient(
-                    m=m1, h=h[i + 1], energy=energy, respect_to="x"
-                )
-                h_eff1, _ = compute_the_gradient(
-                    m=m1, h=h[i + 1], energy=energy, respect_to="z"
-                )
-
-                hamiltonian1 = build_hamiltonian(
-                    field_x=-1 * omega_eff1[0], field_z=-1 * h_eff1[0]
-                )
-
-                if exponent_algorithm:
-                    psi1 = exponentiation_algorithm(
-                        hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                    )
-                else:
-                    psi1 = crank_nicolson_algorithm(
-                        hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                    )
-
-            if exponent_algorithm:
-                psi = exponentiation_algorithm(
-                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                )
-            else:
-                psi = crank_nicolson_algorithm(
-                    hamiltonian=0.5 * (hamiltonian0 + hamiltonian1), psi=psi, dt=dt
-                )
-        eng_tot_z[q, i] = engz
-        eng_tot_x[q, i] = engx
+        psi, omega_eff, h_eff, eng, x, y, z = nonlinear_schrodinger_step(
+            psi=psi,
+            energy=energy,
+            i=i,
+            h=h,
+            self_consistent_step=self_consistent_step,
+            dt=dt,
+            eta=None,
+            exponent_algorithm=exponent_algorithm,
+        )
 
         eng_tot[q, i] = eng
         eng_qutip_tot[q, i] = eng_qutip
 
-        z_tot[q, i, :] = m[0, 0].detach().numpy()
-        x_tot[q, i, :] = m[0, 1].detach().numpy()
-        y_tot[q, i, :] = y[0].detach().numpy()
+        z_tot[q, i, :] = z.detach().numpy()
+        x_tot[q, i, :] = x.detach().numpy()
+        y_tot[q, i, :] = y.detach().numpy()
         gradients_tot[q, i, 1, :] = -1 * omega_eff[0].detach().numpy()
         gradients_tot[q, i, 0, :] = -1 * h_eff[0].detach().numpy()
 
         if periodic:
             np.savez(
                 f"data/kohm_sham_approach/results/tddft_periodic_uniform_zzxxzx_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_delta_{delta[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_delta_{delta[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
-                x_qutip=x_qutip_tot,
-                z_qutip=z_qutip_tot,
-                y_qutip=y_qutip_tot,
-                z=z_tot,
-                x=x_tot,
-                y=y_tot,
-                potential=h_tot,
-                energy_x=eng_tot_x,
-                energy_z=eng_tot_z,
-                energy=eng_tot,
-                energy_qutip=eng_qutip_tot,
-                gradient=gradients_tot,
+                x_qutip=x_qutip_tot[:, :i],
+                z_qutip=z_qutip_tot[:, :i],
+                z=z_tot[:, :i],
+                x=x_tot[:, :i],
+                y=y_tot[:, :i],
+                y_qutip=y_qutip_tot[:, :i],
+                potential=h_tot[:, :i],
+                energy_x=eng_tot_x[:, :i],
+                energy_z=eng_tot_z[:, :i],
+                energy=eng_tot[:, :i],
+                energy_qutip=eng_qutip_tot[:, :i],
+                gradient=gradients_tot[:, :i],
                 rates=rates,
+                time=time[:i],
             )
 
         else:
             np.savez(
                 f"data/kohm_sham_approach/results/dl_functional/tddft_quench_uniform_model_h_0_2_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
-                x_qutip=x_qutip_tot,
-                z_qutip=z_qutip_tot,
-                z=z_tot,
-                x=x_tot,
-                y=y_tot,
-                y_qutip=y_qutip_tot,
-                potential=h_tot,
-                energy_x=eng_tot_x,
-                energy_z=eng_tot_z,
-                energy=eng_tot,
-                energy_qutip=eng_qutip_tot,
-                gradient=gradients_tot,
+                x_qutip=x_qutip_tot[:, :i],
+                z_qutip=z_qutip_tot[:, :i],
+                z=z_tot[:, :i],
+                x=x_tot[:, :i],
+                y=y_tot[:, :i],
+                y_qutip=y_qutip_tot[:, :i],
+                potential=h_tot[:, :i],
+                energy_x=eng_tot_x[:, :i],
+                energy_z=eng_tot_z[:, :i],
+                energy=eng_tot[:, :i],
+                energy_qutip=eng_qutip_tot[:, :i],
+                gradient=gradients_tot[:, :i],
                 rates=rates,
+                time=time[:i],
             )
-
-# %% Visualize results
-
-# for i in range(1):
-#     plt.title("x")
-#     plt.plot(time.detach().numpy(), x_dl[:, i])
-#     plt.plot(time.detach().numpy(), x_qutip[:, i])
-#     plt.show()
-
-# for i in range(1):
-#     plt.title("x")
-#     plt.plot(
-#         time.detach().numpy(), np.abs((x_dl[:, i] - x_qutip[:, i]) / x_qutip[:, i])
-#     )
-#     plt.show()
-
-
-# for i in range(1):
-#     plt.title("z")
-#     plt.plot(time.detach().numpy(), z_dl[:, i])
-#     plt.plot(time.detach().numpy(), z_qutip[:, i])
-#     plt.show()
-
-# for i in range(1):
-#     plt.title("z")
-#     plt.plot(
-#         time.detach().numpy(), np.abs((z_dl[:, i] - z_qutip[:, i]) / z_qutip[:, i])
-#     )
-#     plt.show()
-
-
-# plt.plot(time.detach().numpy(), engs)
-# %%
