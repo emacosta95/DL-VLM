@@ -6,6 +6,7 @@ import torch.nn as nn
 import numpy as np
 from src.training.models_adiabatic import Energy_XXZX
 from src.training.utils import initial_ensamble_random
+from src.tddft_methods.kohm_sham_utils import compute_the_gradient
 from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
 import random
@@ -153,7 +154,7 @@ class GradientDescent:
                 )
             else:
                 m_init = pt.mean(pt.tensor(self.n_init, dtype=pt.double), dim=0).view(
-                    1, 2, self.n_init.shape[-1]
+                    1, 3, self.n_init.shape[-1]
                 )
 
             phi = pt.acos(m_init)

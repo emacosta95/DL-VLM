@@ -140,11 +140,11 @@ periodic = False
 # zz x quench style (?)
 hi = torch.ones((2, l))
 hi[1] = 2.0  # high transverse field
-hi[0] = 0.5
+hi[0] = 0.0
 # define the final external field
 hf = torch.ones((2, l))
-hf[1] = 1.0
-hf[0] = 0.5
+hf[1] = 1.1
+hf[0] = 0.0
 
 
 # define the delta for the periodic driving

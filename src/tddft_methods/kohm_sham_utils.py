@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import torch.nn as nn
-from typing import Tuple
+from typing import Tuple, List
 from tqdm import trange
 
 
@@ -45,13 +45,23 @@ def compute_the_gradient(
 ) -> torch.DoubleTensor:
     m = m.detach()
     if respect_to == "z":
-        z = m[:, 0, :]
+        z = m[:, 2, :]
         z.requires_grad_(True)
-        input = torch.cat((z.unsqueeze(1), m[:, 1, :].unsqueeze(1)), dim=1)
+        input = torch.cat(
+            (m[:, 0, :].unsqueeze(1), m[:, 1, :].unsqueeze(1), z.unsqueeze(1)), dim=1
+        )
     elif respect_to == "x":
-        x = m[:, 1, :]
+        x = m[:, 0, :]
         x.requires_grad_(True)
-        input = torch.cat((m[:, 0, :].unsqueeze(1), x.unsqueeze(1)), dim=1)
+        input = torch.cat(
+            (x.unsqueeze(1), m[:, 1, :].unsqueeze(1), m[:, 2, :].unsqueeze(1)), dim=1
+        )
+    elif respect_to == "y":
+        y = m[:, 1, :]
+        y.requires_grad_(True)
+        input = torch.cat(
+            (m[:, 0, :].unsqueeze(1), y.unsqueeze(1), m[:, 2, :].unsqueeze(1)), dim=1
+        )
     eng = energy(z=input, h=h)[0]
     eng.backward()
     with torch.no_grad():
@@ -61,6 +71,9 @@ def compute_the_gradient(
         elif respect_to == "x":
             grad = x.grad.clone()
             x.grad.zero_()
+        elif respect_to == "y":
+            grad = y.grad.clone()
+            y.grad.zero_()
     return grad.detach(), eng.squeeze().item()
 
 
@@ -293,63 +306,6 @@ def heisemberg_matrix(omega_eff: torch.Tensor, h_eff: torch.Tensor):
     return hm
 
 
-def heisemberg_evolution_runge_kutta_step(
-    m: torch.Tensor, h: torch.Tensor, energy: nn.Module, dt: float, idx: int
-):
-    # first step at t
-    density = torch.cat((m[:, 2].unsqueeze(1), m[:, 0].unsqueeze(1)), dim=1)
-
-    omega_eff = compute_the_gradient(
-        m=density, h=h[idx].unsqueeze(0), energy=energy, respect_to="x"
-    )
-    h_eff = compute_the_gradient(
-        m=density, h=h[idx].unsqueeze(0), energy=energy, respect_to="z"
-    )
-    # this is the zero order t+1 step
-    matrix0 = heisemberg_matrix(omega_eff=-1 * omega_eff[0], h_eff=-1 * h_eff[0])
-    k1 = torch.einsum("lab,ibl->ial", matrix0, m)
-    m0_t_plus_1 = m + dt * k1
-
-    density0_t_plus_1 = torch.cat(
-        (m0_t_plus_1[:, 2].unsqueeze(1), m0_t_plus_1[:, 0].unsqueeze(1)), dim=1
-    )
-    omega_eff_0_t_plus_1 = compute_the_gradient(
-        m=density0_t_plus_1, h=h[idx + 1].unsqueeze(0), energy=energy, respect_to="x"
-    )
-    h_eff_0_t_plus_1 = compute_the_gradient(
-        m=density0_t_plus_1, h=h[idx + 1].unsqueeze(0), energy=energy, respect_to="z"
-    )
-    # compute the matrix at time step t+1/2dt
-    matrix_t_half = 0.5 * (
-        matrix0
-        + heisemberg_matrix(
-            omega_eff=-1 * omega_eff_0_t_plus_1[0], h_eff=-1 * h_eff_0_t_plus_1[0]
-        )
-    )
-    k2 = torch.einsum("lab,ibl->ial", matrix_t_half, m + 0.5 * dt * k1)
-    k3 = torch.einsum("lab,ibl->ial", matrix_t_half, m + 0.5 * dt * k2)
-
-    # compute the matrix at time step t+dt
-    m_t_plus_1 = m + (dt / 5) * (k1 + 2 * k2 + 2 * k3)
-
-    density_t_plus_1 = torch.cat(
-        (m_t_plus_1[:, 2].unsqueeze(1), m_t_plus_1[:, 0].unsqueeze(1)), dim=1
-    )
-    omega_eff_t_plus_1 = compute_the_gradient(
-        m=density_t_plus_1, h=h[idx + 1].unsqueeze(0), energy=energy, respect_to="x"
-    )
-    h_eff_t_plus_1 = compute_the_gradient(
-        m=density_t_plus_1, h=h[idx + 1].unsqueeze(0), energy=energy, respect_to="z"
-    )
-    matrix_t_plus_1 = heisemberg_matrix(
-        omega_eff=-1 * omega_eff_t_plus_1[0], h_eff=-1 * h_eff_t_plus_1[0]
-    )
-
-    k4 = torch.einsum("lab,ibl->ial", matrix_t_plus_1, m + dt * k3)
-
-    return m + (dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4)
-
-
 def nonlinear_master_equation_step(
     psi: torch.Tensor,
     energy: torch.nn.Module,
@@ -359,70 +315,62 @@ def nonlinear_master_equation_step(
     dt: float,
     eta: float,
 ):
-    x = psi[:, 0].double()
-    z = psi[:, 2].double()
-
-    m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
-    m = m.unsqueeze(0)  # the batch dimension
-
-    x0 = psi[:, 0].double()
-    z0 = psi[:, 2].double()
-    m0 = torch.cat((z0.view(1, -1), x0.view(1, -1)), dim=0)
-    m0 = m0.unsqueeze(0)  # the batch dimension
-
     # m0 = torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0)
 
     omega_eff, engx = compute_the_gradient(
-        m=m0, h=h[i].unsqueeze(0), energy=energy, respect_to="x"
+        m=psi.reshape(1, 3, -1), h=h[i].unsqueeze(0), energy=energy, respect_to="x"
+    )
+    delta_eff, engy = compute_the_gradient(
+        m=psi.reshape(1, 3, -1), h=h[i].unsqueeze(0), energy=energy, respect_to="y"
     )
     h_eff, engz = compute_the_gradient(
-        m=m0, h=h[i].unsqueeze(0), energy=energy, respect_to="z"
+        m=psi.reshape(1, 3, -1), h=h[i].unsqueeze(0), energy=energy, respect_to="z"
     )
 
     hamiltonian0 = torch.zeros((psi.shape[0], 3, 3))
-    hamiltonian0[:, 0, 1] = -1 * h_eff[0]
-    hamiltonian0[:, 1, 0] = 1 * h_eff[0]
-    hamiltonian0[:, 1, 2] = -1 * omega_eff[0]
-    hamiltonian0[:, 2, 1] = 1 * omega_eff[0]
-
+    hamiltonian0[:, 0, 1] = 1 * h_eff[0]
+    hamiltonian0[:, 1, 0] = -1 * h_eff[0]
+    hamiltonian0[:, 0, 2] = -1 * delta_eff[0]
+    hamiltonian0[:, 2, 0] = -1 * delta_eff[0]
+    hamiltonian0[:, 1, 2] = 1 * omega_eff[0]
+    hamiltonian0[:, 2, 1] = -1 * omega_eff[0]
+    hamiltonian0 = 2 * hamiltonian0
     # hamiltonian0 = build_hamiltonian(
     #     field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
     # )
-    psi0 = me_exponentiation_algorithm(
+    psi1 = me_exponentiation_algorithm(
         hamiltonian=hamiltonian0,
         psi=psi,
         dt=dt,
     )
 
     for step in range(self_consistent_step):
-        x1 = psi0[:, 0].double()
-        z1 = psi0[:, 2].double()
-
-        # z1, x1, _ = compute_the_magnetization(psi=psi1)
-        m1 = torch.cat((z1.view(1, -1), x1.view(1, -1)), dim=0)
-        m1 = m1.unsqueeze(0)  # the batch dimension
-
         # m1 = torch.from_numpy(m_qutip_tot[q, i + 1]).unsqueeze(0)
 
         omega_eff1, eng = compute_the_gradient(
-            m=m1, h=h[i + 1], energy=energy, respect_to="x"
+            m=psi1.reshape(1, 3, -1), h=h[i + 1], energy=energy, respect_to="x"
         )
         h_eff1, _ = compute_the_gradient(
-            m=m1, h=h[i + 1], energy=energy, respect_to="z"
+            m=psi1.reshape(1, 3, -1), h=h[i + 1], energy=energy, respect_to="z"
+        )
+        delta_eff1, _ = compute_the_gradient(
+            m=psi1.reshape(1, 3, -1), h=h[i + 1], energy=energy, respect_to="y"
         )
 
         hamiltonian1 = torch.zeros((psi.shape[0], 3, 3))
-        hamiltonian1[:, 0, 1] = -1 * h_eff1[0]
-        hamiltonian1[:, 1, 0] = 1 * h_eff1[0]
-        hamiltonian1[:, 1, 2] = -1 * omega_eff1[0]
-        hamiltonian1[:, 2, 1] = 1 * omega_eff1[0]
+        hamiltonian1[:, 0, 1] = 1 * h_eff1[0]
+        hamiltonian1[:, 1, 0] = -1 * h_eff1[0]
+        hamiltonian1[:, 0, 2] = -1 * delta_eff1[0]
+        hamiltonian1[:, 2, 0] = -1 * delta_eff1[0]
+        hamiltonian1[:, 1, 2] = 1 * omega_eff1[0]
+        hamiltonian1[:, 2, 1] = -1 * omega_eff1[0]
+        hamiltonian1 = 2 * hamiltonian1
 
         psi1 = me_exponentiation_algorithm(
             hamiltonian=0.5 * (hamiltonian0 + hamiltonian1),
-            psi=psi0,
+            psi=psi,
             dt=dt,
         )
-        psi0 = psi0 * (1 - eta) + eta * psi1
 
     psi = me_exponentiation_algorithm(
         hamiltonian=0.5 * (hamiltonian0 + hamiltonian1),
@@ -435,6 +383,7 @@ def nonlinear_master_equation_step(
         engx,
         engz,
         omega_eff,
+        delta_eff,
         h_eff,
     )
 
@@ -482,7 +431,7 @@ def nonlinear_schrodinger_step(
 
     hamiltonian_plus = hamiltonian_minus.clone()
 
-    for step in trange(self_consistent_step):
+    for step in range(self_consistent_step):
         if exponent_algorithm:
             psi_plus = exponentiation_algorithm(
                 hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
@@ -503,10 +452,10 @@ def nonlinear_schrodinger_step(
         # m1 = torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0)
 
         omega_eff, eng = compute_the_gradient(
-            m=m_plus, h=h[i].unsqueeze(0), energy=energy, respect_to="x"
+            m=m_plus, h=h[i + 1].unsqueeze(0), energy=energy, respect_to="x"
         )
         h_eff, _ = compute_the_gradient(
-            m=m_plus, h=h[i].unsqueeze(0), energy=energy, respect_to="z"
+            m=m_plus, h=h[i + 1].unsqueeze(0), energy=energy, respect_to="z"
         )
 
         hamiltonian_plus = build_hamiltonian(
@@ -526,4 +475,109 @@ def nonlinear_schrodinger_step(
             dt=dt,
         )
 
+    # z, x, y = compute_the_magnetization(psi=psi)
+
     return psi, omega_eff, h_eff, eng, x, y, z
+
+
+def nonlinear_ensamble_schrodinger_step(
+    psis: List[torch.Tensor],
+    energy: torch.nn.Module,
+    i: int,
+    h: torch.Tensor,
+    self_consistent_step: int,
+    dt: float,
+    eta: float,
+    exponent_algorithm: bool,
+):
+    ms_minus = torch.zeros((2, psis[0].shape[0]))
+    xs = torch.zeros(psis[0].shape[0])
+    ys = torch.zeros(psis[0].shape[0])
+    zs = torch.zeros(psis[0].shape[0])
+
+    for psi in psis:
+        z, x, y = compute_the_magnetization(psi=psi)
+        xs = xs + x
+        ys = ys + y
+        zs = zs + z
+        m = torch.cat((z.view(1, -1), x.view(1, -1)), dim=0)
+        m = m.unsqueeze(0)  # the batch dimension
+
+        eng = energy(m, h[i].unsqueeze(0))[0].item()
+
+        z_minus, x_minus, _ = compute_the_magnetization(psi=psi)
+        m_minus = torch.cat((z_minus.view(1, -1), x_minus.view(1, -1)), dim=0)
+        m_minus = m_minus.unsqueeze(0)  # the batch dimension
+
+        ms_minus = ms_minus + m_minus
+    ms_minus = ms_minus / len(psis)
+    zs = zs / len(psis)
+    xs = xs / len(psis)
+    ys = ys / len(psis)
+
+    omega_eff, engx = compute_the_gradient(
+        m=ms_minus, h=h[i].unsqueeze(0), energy=energy, respect_to="x"
+    )
+    h_eff, engz = compute_the_gradient(
+        m=ms_minus, h=h[i].unsqueeze(0), energy=energy, respect_to="z"
+    )
+
+    hamiltonian_minus = build_hamiltonian(
+        field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+    )
+
+    hamiltonian_plus = hamiltonian_minus.clone()
+
+    for step in range(self_consistent_step):
+        ms_plus = torch.zeros((2, psis[0].shape[0]))
+        for psi in psis:
+            if exponent_algorithm:
+                psi_plus = exponentiation_algorithm(
+                    hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+                    psi=psi,
+                    dt=dt,
+                )
+            else:
+                psi_plus = crank_nicolson_algorithm(
+                    hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+                    psi=psi,
+                    dt=dt,
+                )
+
+            z_plus, x_plus, _ = compute_the_magnetization(psi=psi_plus)
+            m_plus = torch.cat((z_plus.view(1, -1), x_plus.view(1, -1)), dim=0)
+            m_plus = m_plus.unsqueeze(0)  # the batch dimension
+
+            ms_plus = ms_plus + m_plus
+
+        ms_plus = ms_plus / len(psis)
+        # m1 = torch.from_numpy(m_qutip_tot[q, i]).unsqueeze(0)
+
+        omega_eff, eng = compute_the_gradient(
+            m=ms_plus, h=h[i + 1].unsqueeze(0), energy=energy, respect_to="x"
+        )
+        h_eff, _ = compute_the_gradient(
+            m=ms_plus, h=h[i + 1].unsqueeze(0), energy=energy, respect_to="z"
+        )
+
+        hamiltonian_plus = build_hamiltonian(
+            field_x=-1 * omega_eff[0], field_z=-1 * h_eff[0]
+        )
+
+    for i, psi in enumerate(psis):
+        if exponent_algorithm:
+            psis[i] = exponentiation_algorithm(
+                hamiltonian=0.5 * (hamiltonian_plus + hamiltonian_minus),
+                psi=psi,
+                dt=dt,
+            )
+        else:
+            psis[i] = crank_nicolson_algorithm(
+                hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+                psi=psi,
+                dt=dt,
+            )
+
+    # z, x, y = compute_the_magnetization(psi=psi)
+
+    return psis, omega_eff, h_eff, eng, xs, ys, zs
