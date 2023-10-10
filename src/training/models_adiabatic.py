@@ -480,6 +480,45 @@ class Energy_reduction_XXZX(nn.Module):
         return f
 
 
+class Energy_reduction_XXZ(nn.Module):
+    def __init__(
+        self,
+        model: nn.Module,
+    ) -> None:
+        super().__init__()
+
+        self.model: nn.Module = model
+
+    def forward(self, z: torch.Tensor, h: torch.Tensor):
+        # single take
+        if z.shape[0] != 1:
+            df = self.model(z)  # batch x 1 x size
+        else:
+            df = self.model(z).unsqueeze(0)
+        # sum of zz + x
+        f_tot = df[:, :]  # + torch.roll(z[:, 0, :], shifts=-1, dims=-1) * z[:, 0, :]
+        # longitudinal external term
+        e_ext = h * z  # batch x size
+        f = (
+            -1
+            * torch.roll(torch.sqrt(1 - z[:, :] ** 2), shifts=-1, dims=-1)
+            * torch.sqrt(1 - z[:, :] ** 2)
+            + df
+        )
+        # transverse external term
+
+        return e_ext.sum(-1).sum(-1) + f.sum(
+            -1
+        )  # mean for the static dft / sum for tddft
+
+    def functional_value(self, z: torch.Tensor):
+        if z.shape[0] != 1:
+            f = self.model(z)
+        else:
+            f = self.model(z).unsqueeze(0)
+        return f
+
+
 class Energy_XXZX_1input(nn.Module):
     def __init__(
         self,

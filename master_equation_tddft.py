@@ -8,7 +8,10 @@ from tqdm import trange, tqdm
 from src.training.models_adiabatic import Energy_XXZX, Energy_reduction_XXZX
 from src.qutip_lab.qutip_class import SpinOperator, SpinHamiltonian, SteadyStateSolver
 
-from src.tddft_methods.kohm_sham_utils import nonlinear_master_equation_step
+from src.tddft_methods.kohm_sham_utils import (
+    nonlinear_master_equation_step,
+    compute_the_gradient,
+)
 from src.gradient_descent import GradientDescentKohmSham, GradientDescent
 import qutip
 from typing import List
@@ -70,7 +73,7 @@ class PeriodicDriving:
 
 # %% Data
 data = np.load(
-    "data/kohm_sham_approach/disorder/zzxyz_model/test_dataset_zzxyz_range_0.0_3.0_j_1_1nn_n_8157_l_8.npz"
+    "data/kohm_sham_approach/disorder/zzxyz_model/train_dataset_zzxyz_range_0.0_5.0_j_1_1nn_n_800000_l_8.npz"
 )
 
 
@@ -81,7 +84,7 @@ print(z.shape)
 l = z.shape[-1]
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/zzxyz_model/model_zzxyz_dataset_fields_0.0_5.0_j_1_1nn_n_100k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/disorder/zzxyz_model/model_zzxyz_dataset_fields_0.0_5.0_j_1_1nn_n_800k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
     map_location="cpu",
 )
 model.eval()
@@ -95,8 +98,8 @@ z_target = torch.from_numpy(z).double()
 exponent_algorithm = True
 self_consistent_step = 1
 eta = 0.1
-steps = 1000
-tf = 10.0
+steps = 2000
+tf = 20.0
 time = torch.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
 
@@ -134,14 +137,14 @@ periodic = False
 # define the initial external field
 # zz x quench style (?)
 hi = torch.ones((3, l))
-hi[0] = 2.0  # high transverse field
-hi[1] = 1
-hi[2] = 1
+hi[0] = 2  # high transverse field
+hi[1] = 1.0
+hi[2] = 1.0
 # define the final external field
 hf = torch.ones((3, l))
 hf[0] = 1.0
-hf[1] = 1
-hf[2] = 1
+hf[1] = 1.0
+hf[2] = 1.0
 
 
 # define the delta for the periodic driving
@@ -155,9 +158,9 @@ delta[2] = 0.0
 print("initial configuration=", torch.mean(z_target, dim=0))
 
 gd = GradientDescentKohmSham(
-    loglr=-4,
+    loglr=-2,
     energy=energy,
-    epochs=10000,
+    epochs=4000,
     seed=23,
     num_threads=3,
     device="cpu",
@@ -167,7 +170,10 @@ gd = GradientDescentKohmSham(
 
 
 zi = gd.run()
+
+
 zi = torch.from_numpy(zi)[0]
+
 
 for q, rate in enumerate(rates):
     # Qutip Dynamics
@@ -284,7 +290,6 @@ for q, rate in enumerate(rates):
     print(h.shape)
 
     # evolution
-
     output = qutip.sesolve(
         hamiltonian, psi0, time.detach().numpy(), e_ops=obs + obs_x + obs_y
     )
@@ -299,10 +304,19 @@ for q, rate in enumerate(rates):
 
     # psi = initialize_psi_from_xyz(z=-1 * zi[0], x=zi[1], y=torch.zeros_like(zi[1]))
     #  Kohm Sham step 1) Initialize the state from an initial magnetization
-    psi = torch.zeros((l, 3))
-    psi[:, 0] = zi[0].double()
-    psi[:, 1] = zi[1].double()
-    psi[:, 2] = zi[2].double()
+    psi = torch.zeros((3, l))
+    psi[0, :] = zi[0].double()
+    psi[1, :] = zi[1].double()
+    psi[2, :] = zi[2].double()
+
+    a, _ = compute_the_gradient(
+        m=(psi).unsqueeze(0),
+        h=h[0],
+        energy=energy,
+        respect_to="x",
+    )
+
+    print("gradient check", a.shape, a)
 
     # psi[:, 0] = torch.from_numpy(x_qutip_tot[q, 0]).double()
     # psi[:, 1] = torch.from_numpy(y_qutip_tot[q, 0]).double()
@@ -312,7 +326,7 @@ for q, rate in enumerate(rates):
     for i in trange(time.shape[0] - 1):
         t = time[i]
         #  Kohm Sham step 2) Build up the fields
-        psi, engx, engz, omega_eff, h_eff = nonlinear_master_equation_step(
+        psi, engx, engz, omega_eff, delta_eff, h_eff = nonlinear_master_equation_step(
             psi,
             energy=energy,
             i=i,
@@ -325,11 +339,12 @@ for q, rate in enumerate(rates):
         eng_tot_z[q, i] = engz
         eng_tot_x[q, i] = engx
 
-        z_tot[q, i, :] = psi[:, 2].double().detach().numpy()
-        x_tot[q, i, :] = psi[:, 0].double().detach().numpy()
-        y_tot[q, i, :] = psi[:, 1].double().detach().numpy()
-        gradients_tot[q, i, 1, :] = -1 * omega_eff[0].detach().numpy()
-        gradients_tot[q, i, 0, :] = -1 * h_eff[0].detach().numpy()
+        z_tot[q, i, :] = psi[2, :].double().detach().numpy()
+        x_tot[q, i, :] = psi[0, :].double().detach().numpy()
+        y_tot[q, i, :] = psi[1, :].double().detach().numpy()
+        gradients_tot[q, i, 0, :] = -1 * omega_eff[0].detach().numpy()
+        gradients_tot[q, i, 2, :] = -1 * h_eff[0].detach().numpy()
+        gradients_tot[q, i, 1, :] = -1 * delta_eff[0].detach().numpy()
 
         if periodic:
             np.savez(
@@ -351,7 +366,7 @@ for q, rate in enumerate(rates):
 
         else:
             np.savez(
-                f"data/kohm_sham_approach/results/master_equation/tddft_quench_uniform_model_h_0_2_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
+                f"data/kohm_sham_approach/results/master_equation/tddft_quench_uniform_model_zzxyz_h_0_2_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_hf_{hf[0,0].item():.4f}_omegai_{hi[1,0].item():.1f}_omegaf_{hf[1,0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
                 x_qutip=x_qutip_tot[:, :i],
                 z_qutip=z_qutip_tot[:, :i],
                 z=z_tot[:, :i],
