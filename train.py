@@ -322,9 +322,9 @@ def main(args):
         elif args.model_type == "TDDFTCNN":
             pixel = False
             model = TDDFTCNNNoMemory(
-                Loss=nn.MSELoss(),
+                Loss=nn.L1Loss(),
                 in_channels=input_channels,
-                Activation=nn.GELU(),
+                Activation=nn.ReLU(),
                 hidden_channels=hc,
                 ks=kernel_size,
                 padding_mode=padding_mode,
@@ -336,7 +336,7 @@ def main(args):
         elif args.model_type == "UnetLSTM":
             pixel = False
             model = UnetLSTM_beta(
-                Loss=nn.MSELoss(),
+                Loss=nn.L1Loss(),
                 in_channels=input_channels,
                 input_size=args.input_size,
                 activation=nn.GELU(),

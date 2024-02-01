@@ -561,4 +561,72 @@ def nonlinear_schrodinger_step_zzx_model(
             psi=psi,
             dt=dt,
         )
+    return psi, omega_eff, df_dz, z
+
+
+def nonlinear_schrodinger_step_zzxz_model(
+    psi: torch.Tensor,
+    model: torch.nn.Module,
+    i: int,
+    h: torch.Tensor,
+    self_consistent_step: int,
+    dt: float,
+    exponent_algorithm: bool,
+):
+    x, y, z = compute_the_magnetization(psi=psi)
+
+    df_dz = compute_the_gradient_of_the_functional_ux_model(z=z, model=model)
+
+    h_eff = df_dz + h[i, 0]
+
+    omega_eff = (
+        -1 * (torch.roll(x, shifts=-1, dims=-1) + torch.roll(x, shifts=+1, dims=-1))
+        - h[i, 1]
+    )
+
+    hamiltonian_minus = build_hamiltonian(field_x=omega_eff, field_z=h_eff)
+
+    hamiltonian_plus = hamiltonian_minus.clone()
+
+    for step in range(self_consistent_step):
+        if exponent_algorithm:
+            psi_plus = exponentiation_algorithm(
+                hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+                psi=psi,
+                dt=dt,
+            )
+        else:
+            psi_plus = crank_nicolson_algorithm(
+                hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+                psi=psi,
+                dt=dt,
+            )
+
+        x_plus, _, z_plus = compute_the_magnetization(psi=psi_plus)
+
+        df_dz = compute_the_gradient_of_the_functional_ux_model(z=z_plus, model=model)
+        h_eff = df_dz + h[i + 1, 0]
+        omega_eff = (
+            -1
+            * (
+                torch.roll(x_plus, shifts=-1, dims=-1)
+                + torch.roll(x_plus, shifts=+1, dims=-1)
+            )
+            - h[i + 1, 1]
+        )
+
+        hamiltonian_plus = build_hamiltonian(field_x=omega_eff, field_z=h_eff)
+
+    if exponent_algorithm:
+        psi = exponentiation_algorithm(
+            hamiltonian=0.5 * (hamiltonian_plus + hamiltonian_minus),
+            psi=psi,
+            dt=dt,
+        )
+    else:
+        psi = crank_nicolson_algorithm(
+            hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+            psi=psi,
+            dt=dt,
+        )
     return psi, omega_eff, h_eff, z

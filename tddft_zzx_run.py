@@ -5,7 +5,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import trange, tqdm
-from src.training.models_adiabatic import Energy_reduction_XXZ
+from src.training.models_adiabatic import EnergyReductionXXZ
 from src.qutip_lab.qutip_class import SpinOperator, SpinHamiltonian, SteadyStateSolver
 
 from src.tddft_methods.kohm_sham_utils import (
@@ -61,16 +61,9 @@ class PeriodicDriving:
 
 
 # %% Data
-data = np.load(
-    "data/kohm_sham_approach/disorder/zzx_model/train_dataset_reduced_zzx_model_8_l_5.0_h_800000_n.npz.npz"
-)
 
 
-z = data["density"]
-
-print(z.shape)
-
-l = z.shape[-1]
+l = 8
 
 model = torch.load(
     "model_rep/kohm_sham/disorder/zzx_model/model_zzx_dataset_fields_0.0_5.0_j_-1_1nn_n_800k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
@@ -78,20 +71,19 @@ model = torch.load(
 )
 model.eval()
 model = model.to(dtype=torch.double)
-energy = Energy_reduction_XXZ(model=model)
+energy = EnergyReductionXXZ(model=model)
 energy.eval()
-# Implement the Kohm Sham LOOP
-z_target = torch.from_numpy(z).double()
+
 
 # initialization
 exponent_algorithm = True
 self_consistent_step = 1
 steps = 1000
-tf = 10.0
+tf = 100.0
 time = torch.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
 
-rates = np.array([0.1, 0.3, 0.5, 0.8, 1])
+rates = np.array([0, 0.1, 0.3, 0.5, 0.8, 1])
 ndata = rates.shape[0]
 
 
@@ -109,15 +101,15 @@ periodic = False
 
 # define the initial external field
 # zz x quench style (?)
-hi = 2 * torch.ones((l))
+hi = torch.ones(l)
 # high transverse field
 
 # define the final external field
-hf = torch.ones((l))
+hf = 0.5 + torch.rand(l)
 
 
 # define the delta for the periodic driving
-delta = 0.9 * torch.ones((l))
+delta = 0.8 * torch.ones((l))
 
 
 # %% Compute the initial ground state configuration
@@ -129,7 +121,7 @@ gd = GradientDescentKohmSham(
     seed=23,
     num_threads=3,
     device="cpu",
-    n_init=torch.mean(z_target, dim=0),
+    n_init=-0.9 * np.ones(l),
     h=hi,
 )
 
@@ -228,17 +220,15 @@ for q, rate in enumerate(rates):
         )
 
         z_tot[q, i, :] = z.detach().numpy()
-        gradients_tot[q, i, 1, :] = -1 * omega_eff[0].detach().numpy()
-        gradients_tot[q, i, 0, :] = -1 * h_eff[0].detach().numpy()
+        gradients_tot[q, i, 1, :] = -1 * omega_eff.detach().numpy()
+        gradients_tot[q, i, 0, :] = -1 * h_eff.detach().numpy()
 
         if periodic:
             np.savez(
-                f"data/kohm_sham_approach/results/dl_functional/zzx_model/tddft_periodic_uniform_zzxxzx_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0,0].item():.4f}_delta_{delta[0].item():.4f}_omegai_{hi[1].item():.1f}_delta_{delta[1].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
+                f"data/kohm_sham_approach/results/dl_functional/zzx_model/periodic/tddft_periodic_uniform_zzxxzx_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0].item():.4f}_delta_{delta[0].item():.4f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}_size_{l}",
                 z_qutip=z_qutip_tot[:, :i],
                 z=z_tot[:, :i],
                 potential=h_tot[:, :i],
-                energy=eng_tot[:, :i],
-                energy_qutip=eng_qutip_tot[:, :i],
                 gradient=gradients_tot[:, :i],
                 rates=rates,
                 time=time[:i],
@@ -246,7 +236,7 @@ for q, rate in enumerate(rates):
 
         else:
             np.savez(
-                f"data/kohm_sham_approach/results/dl_functional/zzx_model/tddft_quench_uniform_model_h_0_2_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0].item():.1f}_hf_{hf[0].item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}",
+                f"data/kohm_sham_approach/results/dl_functional/zzx_model/non_uniform/tddft_quench_model_h_0_2_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi.mean().item():.1f}_hf_{hf.mean().item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}_size_{l}",
                 z_qutip=z_qutip_tot[:, :i],
                 z=z_tot[:, :i],
                 potential=h_tot[:, :i],

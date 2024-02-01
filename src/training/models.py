@@ -31,22 +31,6 @@ class TDDFTCNNNoMemory(nn.Module):
         Loss: nn.Module = None,
         t_interval_range: int = None,
     ) -> None:
-        """REconstruct DENsity profile via Transpose convolution
-
-        Argument:
-        n_conv_layers[int]: the number of layers of the architecture.
-        in_features [int]: the number of features of the input data.
-        in_channels[int]: the number of channels of the input data.
-        hidden_channels[list]: the list of hidden channels for each layer [C_1,C_2,...,C_N] with C_i referred to the i-th layer.
-        out_features[int]: the number of features of the output data
-        out_channels[int]: the number of channels of the output data.
-        ks[int]: the kernel size for each layer.
-        padding[int]: the list of padding for each layer.
-        padding_mode[str]: the padding_mode (according to the pytorch documentation) for each layer.
-        Activation[nn.Module]: the activation function that we adopt
-        n_block_layers[int]: number of conv layers for each norm
-        """
-
         super().__init__()
 
         self.t_interval_range = t_interval_range
@@ -84,44 +68,28 @@ class TDDFTCNNNoMemory(nn.Module):
         loss = 0
         x, y = batch
 
-        t_int = np.random.randint(self.kernel_size + 1, self.t_interval_range, size=1)[
-            0
-        ]
-        x = x.to(device=device, dtype=torch.double)
-        x = x[:, :t_int]
-        y = y.to(device=device, dtype=torch.double)
-        y = y[:, :t_int]
-        x = self.forward(x)
-        x = x.squeeze()
+        x = x.to(device=device)
+        x = x[:, :,: self.t_interval_range]
+        y = y.to(device=device)
+        y = y[:, :, : self.t_interval_range]
+        y_hat = self.forward(x.double())
+        y_hat = y_hat.squeeze()
         y = y.squeeze()
-        loss = +self.loss(x, y)
-        return loss
-
-    def train_step(self, batch: Tuple, device: str):
-        loss = 0
-        x, y = batch
-
-        # t_int = np.random.randint(5, self.t_interval_range, size=1)[0]
-        x = x.to(device=device, dtype=torch.double)
-        # x = x[:, :t_int]
-        y = y.to(device=device, dtype=torch.double)
-        # y = y[:, :t_int]
-        x = self.forward(x)
-        x = x.squeeze()
-        y = y.squeeze()
-        loss = +self.loss(x, y)
+        loss = +self.loss(y_hat, y)
         return loss
 
     def valid_step(self, batch: Tuple, device: str):
         loss = 0
         x, y = batch
 
-        x = x.to(device=device, dtype=torch.double)[:, : self.t_interval_range]
-        y = y.to(device=device, dtype=torch.double)[:, : self.t_interval_range]
-        x = self.forward(x)
-        x = x.squeeze()
+        x = x.to(device=device)
+        x = x[:, :,: self.t_interval_range]
+        y = y.to(device=device)
+        y = y[:, :, : self.t_interval_range]
+        y_hat = self.forward(x.double())
+        y_hat = y_hat.squeeze()
         y = y.squeeze()
-        loss = +self.loss(x, y)
+        loss = +self.loss(y_hat, y)
         return loss
 
     def save(

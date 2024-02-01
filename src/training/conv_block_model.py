@@ -24,9 +24,9 @@ class ConvBlock(nn.Module):
             nn.Conv2d(
                 in_channels=in_channels,
                 out_channels=hc[0],
-                kernel_size=[1, kernel_size[1]],
+                kernel_size=[kernel_size[0], 1],
                 padding_mode=padding_mode,
-                padding=[0, (kernel_size[1] - 1) // 2],
+                padding=[(kernel_size[0] - 1) // 2, 0],
             ),
         )
         self.block.add_module(
@@ -34,7 +34,8 @@ class ConvBlock(nn.Module):
             CausalConv2d(
                 in_channels=hc[0],
                 out_channels=hc[0],
-                kernel_size=[kernel_size[0], 1],
+                kernel_size=[1, kernel_size[1]],
+                bias=False,
             ),
         )
 
@@ -43,15 +44,14 @@ class ConvBlock(nn.Module):
             nn.BatchNorm2d(hc[0]),
         )
         for i in range(n_conv - 1):
-
             self.block.add_module(
                 f"conv_sp{i}",
                 nn.Conv2d(
                     in_channels=hc[i - 1],
                     out_channels=hc[i],
-                    kernel_size=[1, kernel_size[1]],
+                    kernel_size=[kernel_size[0], 1],
                     padding_mode=padding_mode,
-                    padding=[0, (kernel_size[1] - 1) // 2],
+                    padding=[(kernel_size[0] - 1) // 2, 0],
                 ),
             )
             self.block.add_module(
@@ -59,7 +59,8 @@ class ConvBlock(nn.Module):
                 CausalConv2d(
                     in_channels=hc[i],
                     out_channels=hc[i],
-                    kernel_size=[kernel_size[0], 1],
+                    kernel_size=[1, kernel_size[1]],
+                    bias=False,
                 ),
             )
 
@@ -74,9 +75,9 @@ class ConvBlock(nn.Module):
             nn.Conv2d(
                 in_channels=hc[i],
                 out_channels=hc[i],
-                kernel_size=[1, kernel_size[1]],
+                kernel_size=[kernel_size[0], 1],
                 padding_mode=padding_mode,
-                padding=[0, (kernel_size[1] - 1) // 2],
+                padding=[(kernel_size[0] - 1) // 2, 0],
             ),
         )
         self.block.add_module(
@@ -84,7 +85,8 @@ class ConvBlock(nn.Module):
             CausalConv2d(
                 in_channels=hc[i],
                 out_channels=out_channels,
-                kernel_size=[kernel_size[0], 1],
+                kernel_size=[1, kernel_size[1]],
+                bias=False,
             ),
         )
 
@@ -107,7 +109,6 @@ class ConvBlock1D(nn.Module):
 
         self.block = nn.Sequential()
         for i in range(n_conv):
-
             if i == 0:
                 self.block.add_module(
                     f"conv_{i}",

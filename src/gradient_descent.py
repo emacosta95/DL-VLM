@@ -4,7 +4,6 @@ from numpy.lib.mixins import _inplace_binary_method
 import torch as pt
 import torch.nn as nn
 import numpy as np
-from src.training.models_adiabatic import Energy_XXZX
 from src.training.utils import initial_ensamble_random
 from src.tddft_methods.kohm_sham_utils import compute_the_gradient
 from tqdm import tqdm, trange

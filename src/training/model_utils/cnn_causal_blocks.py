@@ -212,13 +212,14 @@ class CausalConv2d(nn.Conv2d):
         dilation = _pair(dilation)
         if padding is None:
             padding = [
-                int((kernel_size[0] - 1) * dilation[0]),
-                int((kernel_size[1] - 1) * dilation[1] / 2),
+                ((kernel_size[0] - 1) * dilation[0] // 2),
+                ((kernel_size[1] - 1) * dilation[1]),
             ]
         else:
             padding = _pair(padding)
-        self.left_padding = padding[0]
-        self.up_padding = padding[1]
+        # print(f"time padding={padding[1]}")
+        self.left_padding = padding[1]
+        self.up_padding = padding[0]
         self.padding_mode = padding_mode
         super().__init__(
             in_channels=in_channels,
@@ -232,14 +233,33 @@ class CausalConv2d(nn.Conv2d):
         )
 
     def forward(self, inputs):
+        # print(self.left_padding)
         # print(inputs.shape)
-        inputs = F.pad(
-            inputs, (0, 0, self.left_padding, 0)
-        )  # asymmetric in time, zero padding
+        # inputs = F.pad(
+        #     inputs, (0, 0, self.left_padding, 0)
+        # )  # asymmetric in time, zero padding
         # print("new inputs->,", inputs.shape)
-        inputs = F.pad(
-            inputs, (self.up_padding, self.up_padding, 0, 0), mode="circular"
+
+        # extension of the input for the initial condition to the first value of the input
+        new_inputs = torch.zeros(
+            (
+                inputs.shape[0],
+                inputs.shape[1],
+                inputs.shape[2],
+                inputs.shape[-1] + self.left_padding,
+            )
+        ).to(dtype=inputs.dtype, device=inputs.device)
+
+        for i in range(self.left_padding):
+            new_inputs[:, :, :, i] = inputs[:, :, :, 0]
+
+        new_inputs[:, :, :, self.left_padding :] = inputs
+
+        new_inputs = F.pad(
+            new_inputs, (self.up_padding, self.up_padding, 0, 0), mode="circular"
         )  # symmetric in space, pbc padding
         # print(inputs.shape)
-        output = super().forward(inputs)
+        # print(new_inputs.shape)
+        # print("NEW INPUTS=", new_inputs[0, 0])
+        output = super().forward(new_inputs)
         return output
