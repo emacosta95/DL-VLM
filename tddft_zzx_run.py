@@ -10,12 +10,67 @@ from src.qutip_lab.qutip_class import SpinOperator, SpinHamiltonian, SteadyState
 
 from src.tddft_methods.kohm_sham_utils import (
     initialize_psi_from_z,
-    nonlinear_schrodinger_step_zzx_model,
+    nonlinear_schrodinger_step_zzx_model_full_effective_field,
+    get_effective_field,
 )
 from src.gradient_descent import GradientDescentKohmSham
 import qutip
 from typing import List
 import os
+
+# Set the seed for generating random numbers
+np.random.seed(42)
+torch.manual_seed(42)
+
+
+def generate_smooth_gaussian_noise(
+    time: np.ndarray,
+    tau: float,
+    tf: float,
+    mean: float,
+    sigma: float,
+    min_range: float,
+    max_range: float,
+    shift: float,
+):
+    a_omegas = np.random.normal(mean, sigma, size=time.shape[0])
+    omegas = np.linspace(0, time.shape[0] * 2 * np.pi / tf, time.shape[0])
+    driving = np.zeros(time.shape[0])
+
+    for tr in range(time.shape[0]):
+        if omegas[tr] < 2 * np.pi / tau:
+            driving = driving + a_omegas[tr] * np.cos(omegas[tr] * time)
+
+        else:
+            break
+
+    max_driving = np.max(driving)
+    min_driving = np.min(driving)
+
+    old_interval = max_driving - min_driving
+    driving = (
+        (driving - min_driving) * (max_range - min_range) / old_interval
+        + min_range
+        + shift
+    )
+
+    return driving
+
+
+class Driving:
+    def __init__(self, h: np.array, idx: int, dt: float) -> None:
+        self.h = h
+        # self.tf=tf
+        self.idx: int = idx
+        self.dt: float = dt
+
+    def field(self, t: float, args):
+        return self.h[int(t / self.dt), self.idx]
+
+    def get_the_field(
+        self,
+    ):
+        return self.h
 
 
 ### SET NUM THREADS
@@ -25,123 +80,88 @@ import os
 # torch.set_num_threads(3)
 
 
-# %% Qutip details
-class Driving:
-    def __init__(self, h_i: np.array, h_f: np.array, rate: float, idx: int) -> None:
-        self.hi = h_i
-        self.hf = h_f
-        self.rate = rate
-        self.idx: int = idx
-
-    def field(self, t: float, args):
-        return (
-            self.hi[self.idx] * np.exp(-t * self.rate)
-            + (1 - np.exp(-t * self.rate)) * self.hf[self.idx]
-        )
-
-    def get_the_field(self, t: np.ndarray):
-        return (
-            self.hi[None, :] * np.exp(-t[:, None] * self.rate)
-            + (1 - np.exp(-t[:, None] * self.rate)) * self.hf[None, :]
-        )
-
-
-class PeriodicDriving:
-    def __init__(self, h_i: np.array, delta: np.array, rate: float, idx: int) -> None:
-        self.hi = h_i
-        self.delta = delta
-        self.rate = rate
-        self.idx: int = idx
-
-    def field(self, t: float, args):
-        return self.hi[self.idx] + (self.delta[self.idx]) * np.sin(self.rate * t)
-
-    def get_the_field(self, t: np.ndarray):
-        return self.hi[None, :] + (self.delta[None, :]) * np.sin(self.rate * t)[:, None]
-
-
-# %% Data
+# %% Data and Hyperparameters
 
 
 l = 8
 
 model = torch.load(
-    "model_rep/kohm_sham/disorder/zzx_model/model_zzx_dataset_fields_0.0_5.0_j_-1_1nn_n_800k_unet_l_train_8_[60, 60, 60, 60, 60, 60]_hc_5_ks_1_ps_6_nconv_0_nblock",
+    "model_rep/kohm_sham/model_current_t_interval_500_240202_[40, 40, 40, 40, 40, 40]_hc_[3, 5]_ks_1_ps_6_nconv_1_nblock",
     map_location="cpu",
 )
 model.eval()
 model = model.to(dtype=torch.double)
-energy = EnergyReductionXXZ(model=model)
-energy.eval()
+
+# dataset for the driving
+data = np.load(
+    "data/dataset_h_eff/dataset_max_shift_0.6_nbatch_100_batchsize_100_steps_1000_tf_30.0.npz"
+)
+
+h_tot = data["h"][300:400]
+dataset_z = data["z"][300:400]
 
 
+h_eff_exact = data["h_eff"][300:400]
+print(h_tot[0])
+print(h_tot.shape)
 # initialization
 exponent_algorithm = True
-self_consistent_step = 1
+self_consistent_step = 0
+nbatch = 1
+
+
+rate = 0.2
+
+min_range_driving = 0.01
+max_range_driving = 1.0
+
+shift = 0.5
+
 steps = 1000
-tf = 100.0
-time = torch.linspace(0.0, tf, steps)
+tf = 30.0
+time = np.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
+print(dt)
 
-rates = np.array([0, 0.1, 0.3, 0.5, 0.8, 1])
-ndata = rates.shape[0]
-
-
-h_tot = np.zeros((ndata, steps, l))
-z_qutip_tot = np.zeros((ndata, steps, l))
-z_tot = np.zeros((ndata, steps, l))
-
-eng_tot = np.zeros((ndata, steps))
-eng_qutip_tot = np.zeros((ndata, steps))
-gradients_tot = np.zeros((ndata, steps, 2, l))
+z_qutip_tot = np.zeros((nbatch, steps, l))
+z_tot = np.zeros_like(z_qutip_tot)
+h_eff_tot = np.zeros_like(z_qutip_tot)
 
 
-# is the driving periodic?
-periodic = False
+current_qutip_tot = np.zeros_like(z_qutip_tot)
+current_derivative_tot = np.zeros_like(z_qutip_tot)
 
-# define the initial external field
-# zz x quench style (?)
-hi = torch.ones(l)
-# high transverse field
+ham0 = SpinHamiltonian(
+    direction_couplings=[("x", "x")],
+    pbc=True,
+    coupling_values=[-1.0],
+    size=l,
+)
 
-# define the final external field
-hf = 0.5 + torch.rand(l)
+obs: List[qutip.Qobj] = []
+current_obs: List[qutip.Qobj] = []
+for i in range(l):
+    z_op = SpinOperator(index=[("z", i)], coupling=[1.0], size=l, verbose=1)
+    # print(f"x[{i}]=", x.qutip_op, "\n")
+    current = SpinOperator(
+        index=[("x", (i - 1) % l, "y", i), ("y", i, "x", (i + 1) % l)],
+        coupling=[-2, -2],
+        size=l,
+    )
+    obs.append(z_op.qutip_op)
+    current_obs.append(current.qutip_op)
 
-
-# define the delta for the periodic driving
-delta = 0.8 * torch.ones((l))
-
+time_stop = 500
 
 # %% Compute the initial ground state configuration
 
-gd = GradientDescentKohmSham(
-    loglr=-2,
-    energy=energy,
-    epochs=1000,
-    seed=23,
-    num_threads=3,
-    device="cpu",
-    n_init=-0.9 * np.ones(l),
-    h=hi,
-)
 
-
-zi = gd.run()
-zi = torch.from_numpy(zi)[0]
-
-for q, rate in enumerate(rates):
+for q in range(nbatch):
     # Qutip Dynamics
     # Hamiltonian
-    ham0 = SpinHamiltonian(
-        direction_couplings=[("x", "x")],
-        pbc=True,
-        coupling_values=[-1.0],
-        size=l,
-    )
+    h = h_tot[q]
 
-    hamExtZ = SpinOperator(
-        index=[("z", i) for i in range(l)], coupling=hi.detach().numpy(), size=l
-    )
+    hamExtZ = SpinOperator(index=[("z", i) for i in range(l)], coupling=h[0], size=l)
 
     eng, psi0 = np.linalg.eigh(ham0.qutip_op + hamExtZ.qutip_op)
     psi0 = qutip.Qobj(psi0[:, 0], shape=psi0.shape, dims=([[2 for i in range(l)], [1]]))
@@ -157,90 +177,211 @@ for q, rate in enumerate(rates):
     #     else:
     #         psi0 = qutip.tensor(psi0, psi_l)
     # compute and check the magnetizations
-    obs: List[qutip.Qobj] = []
-    for i in range(l):
-        z_op = SpinOperator(index=[("z", i)], coupling=[1.0], size=l, verbose=1)
 
-        print(z_op.expect_value(psi=psi0) - zi[i].detach().numpy())
-        obs.append(z_op.qutip_op)
-
-    print("\n INITIALIZE THE HAMILTONIAN \n")
     # build up the time dependent object for the qutip evolution
     hamiltonian = [ham0.qutip_op]
 
-    print("periodic=", periodic, "\n")
     for i in range(l):
-        if periodic:
-            drive_z = PeriodicDriving(
-                h_i=hi.detach().numpy(),
-                delta=delta.detach().numpy(),
-                rate=rate,
-                idx=i,
-            )
-        else:
-            drive_z = Driving(
-                h_i=hi.detach().numpy(),
-                h_f=hf.detach().numpy(),
-                rate=rate,
-                idx=i,
-            )
+        drive_z = Driving(
+            h=h,
+            dt=time[1] - time[0],
+            idx=i,
+        )
 
         hamiltonian.append([obs[i], drive_z.field])
 
-    h_z = drive_z.get_the_field(time.detach().numpy()).reshape(time.shape[0], -1)
+    # evolution and
 
-    h_tot[q] = h_z
-    h = torch.from_numpy(h_z)
-    print(h.shape)
+    output = qutip.sesolve(hamiltonian, psi0, time, e_ops=obs + current_obs)
 
-    # evolution
-
-    output = qutip.sesolve(hamiltonian, psi0, time.detach().numpy(), e_ops=obs)
-
-    # %% visualization
+    current_exp = np.zeros((steps, l))
+    z_exp = np.zeros_like(current_exp)
     for r in range(l):
-        z_qutip_tot[q, :, r] = output.expect[r]
+        z_exp[:, r] = output.expect[r]
+        current_exp[:, r] = output.expect[l + r]
 
+    # get the full field
+    heff_1stversion = torch.zeros_like(torch.tensor(z_exp))
+
+    z_vector = torch.tensor(z_exp[0]).unsqueeze(0)
+    for i in trange(time_stop):
+
+        if i == 0:
+
+            heff_1stversion[i] = get_effective_field(z=(z_vector), model=model, i=-1)
+            z_vector = torch.cat(
+                (z_vector, torch.tensor(z_exp[i + 1]).unsqueeze(0)), dim=0
+            )
+        if i != 0:
+            heff_1stversion[i] = get_effective_field(z=z_vector, model=model, i=-1)
+
+            if i != time_stop - 1:
+                z_vector = torch.cat(
+                    (z_vector, torch.tensor(z_exp[i + 1]).unsqueeze(0)), dim=0
+                )
+
+    input = torch.einsum("ti->it", torch.tensor(z_exp[:time_stop]))
+    heff = model(input.unsqueeze(0)).detach().squeeze()
+    heff = torch.einsum("it->ti", heff)
+
+    current_derivative = np.gradient(current_exp, time, axis=0)
+    x_sp = np.sqrt(1 - z_exp**2) * np.cos(
+        np.arcsin(-1 * (current_exp) / (2 * np.sqrt(1 - z_exp**2)))
+    )
+    h_eff_exact = (0.25 * current_derivative + z_exp) / (x_sp + 10**-4) - h
+    zi = torch.tensor(z_exp[0, :])  # initial magnetization
+    z_evolution = zi.clone().unsqueeze(0)  # initialize the evolution
     #  Kohm Sham step 1) Initialize the state from an initial magnetization
-    psi = initialize_psi_from_z(z=-1 * zi)
-    # psi = initialize_psi_from_xyz(z=-1 * zi[0], x=zi[1], y=torch.zeros_like(zi[1]))
 
+    # psi = initialize_psi_from_xyz(z=-1 * zi[0], x=zi[1], y=torch.zeros_like(zi[1]))
+    # density matrix initialization
+    psi = initialize_psi_from_z(z=-1 * zi)
+
+    h_eff = torch.zeros((time_stop, l))
     t_bar = tqdm(enumerate(time))
-    for i in trange(time.shape[0] - 1):
+    for i in trange(time_stop - 1):
         t = time[i]
 
-        psi, omega_eff, h_eff, z = nonlinear_schrodinger_step_zzx_model(
-            psi=psi,
-            model=model,
-            i=i,
-            h=h,
-            self_consistent_step=self_consistent_step,
-            dt=dt,
-            exponent_algorithm=exponent_algorithm,
+        psi, df, z_evolution = (
+            nonlinear_schrodinger_step_zzx_model_full_effective_field(
+                psi=psi,
+                model=model,
+                i=i,
+                h=torch.tensor(h[:time_stop]) + heff,
+                full_z=z_evolution,  # full z in size x time
+                self_consistent_step=self_consistent_step,
+                dt=dt,
+                exponent_algorithm=exponent_algorithm,
+                #    dataset_z=torch.tensor(dataset_z),
+            )
         )
+        h_eff[i] = df
 
-        z_tot[q, i, :] = z.detach().numpy()
-        gradients_tot[q, i, 1, :] = -1 * omega_eff.detach().numpy()
-        gradients_tot[q, i, 0, :] = -1 * h_eff.detach().numpy()
+        # z_qutip_tot[q, i, :] = z_exp[i]
+        # z_tot[q, i, :] = z_evolution.detach().numpy()
+        # h_eff_tot[q, i, :] = h_eff
+        # h_tot[q, i, :] = h[i]
+        # h_eff_tot_exact[q, i, :] = h_eff_exact[i, :]
 
-        if periodic:
-            np.savez(
-                f"data/kohm_sham_approach/results/dl_functional/zzx_model/periodic/tddft_periodic_uniform_zzxxzx_model_h_0_5_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi[0].item():.4f}_delta_{delta[0].item():.4f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}_size_{l}",
-                z_qutip=z_qutip_tot[:, :i],
-                z=z_tot[:, :i],
-                potential=h_tot[:, :i],
-                gradient=gradients_tot[:, :i],
-                rates=rates,
-                time=time[:i],
-            )
+        # np.savez(
+        #     f"data/kohm_sham_approach/results/true_tddft/test",
+        #     z_qutip=z_qutip_tot[:, :i],
+        #     z=z_tot[:, :i],
+        #     potential=h_tot[:, :i],
+        #     h_eff=h_eff_tot[:, :i],
+        #     h_eff_exact=h_eff_tot_exact[:, :i],
+        #     time=time[:i],
 
-        else:
-            np.savez(
-                f"data/kohm_sham_approach/results/dl_functional/zzx_model/non_uniform/tddft_quench_model_h_0_2_omega_0_2_ti_0_tf_{tf:.0f}_hi_{hi.mean().item():.1f}_hf_{hf.mean().item():.1f}_steps_{steps}_self_consistent_steps_{self_consistent_step}_ndata_{ndata}_exp_{exponent_algorithm}_size_{l}",
-                z_qutip=z_qutip_tot[:, :i],
-                z=z_tot[:, :i],
-                potential=h_tot[:, :i],
-                gradient=gradients_tot[:, :i],
-                rates=rates,
-                time=time[:i],
-            )
+    plt.plot(z_exp[:time_stop, 0])
+    plt.plot(z_evolution[:time_stop, 0])
+    plt.show()
+
+    plt.plot(
+        heff_1stversion.numpy()[:time_stop, 0],
+        label="reconstructed first version",
+        linewidth=3,
+        linestyle="--",
+    )
+    plt.plot(heff.numpy()[:time_stop, 0], label="reconstructed")
+    plt.plot(h_eff_exact[:time_stop, 0], label="exact")
+    # plt.plot(h_eff[:time_stop, 0], label="TDDFT")
+    plt.legend()
+    plt.show()
+
+# %%
+smooth_heff = (heff + torch.roll(heff, shifts=1, dims=0)) / 2
+
+plt.plot(heff.numpy()[:, 0])
+plt.plot(h_eff_exact[:, 0])
+plt.plot(smooth_heff[:, 0])
+
+plt.show()
+# %% USING QUTIP for the first site
+ham0 = SpinOperator(index=[("x", 0)], coupling=[1], size=1)
+
+hamExtZ = SpinOperator(index=[("z", 0)], coupling=[h_eff_exact[0, 0] + h[0, 0]], size=1)
+
+
+psi0 = np.zeros(2)
+psi0[0] = np.sqrt((1 + z_exp[0, 0]) / 2)
+psi0[1] = np.sqrt((1 - z_exp[0, 0]) / 2)
+psi0 = qutip.Qobj(psi0[:], shape=psi0.shape, dims=([[2 for i in range(1)], [1]]))
+
+print("real ground state energy=", eng[0], eng)
+# to check if we have the same outcome with the Crank-Nicholson algorithm
+# psi = initialize_psi_from_z_and_x(z=-1 * zi[0], x=zi[1])
+# psi = psi.detach().numpy()
+# for i in range(l):
+#     psi_l = qutip.Qobj(psi[i], shape=psi[i].shape, dims=([[2], [1]]))
+#     if i == 0:
+#         psi0 = psi_l
+#     else:
+#         psi0 = qutip.tensor(psi0, psi_l)
+# compute and check the magnetizations
+obs: List[qutip.Qobj] = []
+obs_x: List[qutip.Qobj] = []
+# for i in range(l):
+#     z_op = SpinOperator(index=[("z", i)], coupling=[1.0], size=l, verbose=1)
+#     # print(f"x[{i}]=", x.qutip_op, "\n")
+#     x_op = SpinOperator(index=[("x", i)], coupling=[1.0], size=l, verbose=0)
+#     obs.append(z_op.qutip_op)
+#     obs_x.append(x_op.qutip_op)
+
+obs = [
+    SpinOperator(index=[("z", i) for i in range(1)], coupling=[1] * 1, size=1).qutip_op
+]
+
+print(obs[0])
+
+
+print("\n INITIALIZE THE HAMILTONIAN \n")
+# build up the time dependent object for the qutip evolution
+hamiltonian = [ham0.qutip_op]
+
+for i in range(1):
+    drive_z = Driving(
+        h=h_eff_exact[:, :] + h,
+        idx=i,
+        dt=time[1] - time[0],
+    )
+
+    hamiltonian.append([obs[i], drive_z.field])
+
+
+# evolution
+
+output = qutip.sesolve(hamiltonian, psi0, time)
+
+psi_t = output.states
+psi_t = np.asarray(psi_t)
+print(psi_t.shape)
+z_eff = np.einsum(
+    "ta,ab,tb->t",
+    np.conj(psi_t)[:, :, 0],
+    SpinOperator(index=[("z", i) for i in range(1)], coupling=[1], size=1).qutip_op,
+    psi_t[:, :, 0],
+)
+
+
+# %%
+
+plt.plot(z_eff)
+plt.plot(z_exp[:, 0])
+plt.show()
+
+# %%
+plt.plot(h_eff_exact[:, 0])
+plt.plot(heff.numpy()[:, 0])
+plt.show()
+
+# %%
+from scipy.fft import fft
+
+h_eff_exact_signal = fft(h_eff_exact[:, 0])
+heff_signal = fft(heff.numpy()[:, 0])
+plt.plot(h_eff_exact_signal)
+plt.plot(heff_signal)
+plt.xlim([40, 100])
+plt.ylim([-50, 50])
+plt.show()
+# %%

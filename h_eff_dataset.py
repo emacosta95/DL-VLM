@@ -52,7 +52,7 @@ class Driving:
         self.dt: float = dt
 
     def field(self, t: float, args):
-        return self.h[int(t / self.dt) - 1, self.idx]
+        return self.h[int(t / self.dt), self.idx]
 
     def get_the_field(
         self,
@@ -62,17 +62,17 @@ class Driving:
 
 # hyperparameters
 
-nbatch = 10
-batch_size = 2
+nbatch = 100
+batch_size = 100
 l = 8
 rate = 0.2
 
 min_range_driving = 0.01
 max_range_driving = 1.0
-max_shift = 0.6
+max_shift = 1.0
 
-steps = 2000
-tf = 60.0
+steps = 1000
+tf = 30.0
 time = np.linspace(0.0, tf, steps)
 
 z_qutip_tot = np.zeros((nbatch * batch_size, steps, l))

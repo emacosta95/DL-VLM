@@ -28,48 +28,37 @@ import os
 
 # %% Qutip details
 class Driving:
-    def __init__(
-        self, h_i: np.array, h_f: np.array, rate: float, idx: int, direction: int
-    ) -> None:
+    def __init__(self, h_i: np.array, h_f: np.array, rate: float, idx: int) -> None:
         self.hi = h_i
         self.hf = h_f
         self.rate = rate
         self.idx: int = idx
-        self.direction = direction
 
     def field(self, t: float, args):
         return (
-            self.hi[self.direction, self.idx] * np.exp(-t * self.rate)
-            + (1 - np.exp(-t * self.rate)) * self.hf[self.direction, self.idx]
+            self.hi[self.idx] * np.exp(-t * self.rate)
+            + (1 - np.exp(-t * self.rate)) * self.hf[self.idx]
         )
 
     def get_the_field(self, t: np.ndarray):
         return (
-            self.hi[None, self.direction, :] * np.exp(-t[:, None] * self.rate)
-            + (1 - np.exp(-t[:, None] * self.rate)) * self.hf[None, self.direction, :]
+            self.hi[None, :] * np.exp(-t[:, None] * self.rate)
+            + (1 - np.exp(-t[:, None] * self.rate)) * self.hf[None, :]
         )
 
 
 class PeriodicDriving:
-    def __init__(
-        self, h_i: np.array, delta: np.array, rate: float, idx: int, direction: int
-    ) -> None:
+    def __init__(self, h_i: np.array, delta: np.array, rate: float, idx: int) -> None:
         self.hi = h_i
         self.delta = delta
         self.rate = rate
         self.idx: int = idx
-        self.direction = direction
 
     def field(self, t: float, args):
-        return self.hi[self.direction, self.idx] + (
-            self.delta[self.direction, self.idx]
-        ) * np.sin(self.rate * t)
+        return self.hi[self.idx] + (self.delta[self.idx]) * np.sin(self.rate * t)
 
     def get_the_field(self, t: np.ndarray):
-        return (
-            self.hi[None, self.direction, :]
-            + (self.delta[None, self.direction, :]) * np.sin(self.rate * t)[:, None]
-        )
+        return self.hi[None, :] + (self.delta[None, :]) * np.sin(self.rate * t)[:, None]
 
 
 # %% Data

@@ -69,7 +69,11 @@ class TDDFTCNNNoMemory(nn.Module):
         x, y = batch
 
         x = x.to(device=device)
-        x = x[:, :,: self.t_interval_range]
+        # this is necessary to make the model stabe under the training
+        noise = torch.normal(
+            0, 0.001, size=x[:, :, : self.t_interval_range].shape, device=x.device
+        )
+        x = x[:, :, : self.t_interval_range]  # + noise
         y = y.to(device=device)
         y = y[:, :, : self.t_interval_range]
         y_hat = self.forward(x.double())
@@ -83,7 +87,7 @@ class TDDFTCNNNoMemory(nn.Module):
         x, y = batch
 
         x = x.to(device=device)
-        x = x[:, :,: self.t_interval_range]
+        x = x[:, :, : self.t_interval_range]
         y = y.to(device=device)
         y = y[:, :, : self.t_interval_range]
         y_hat = self.forward(x.double())

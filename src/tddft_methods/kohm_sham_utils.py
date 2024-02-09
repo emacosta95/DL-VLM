@@ -104,14 +104,14 @@ def compute_the_magnetization(psi: torch.Tensor) -> Tuple[torch.DoubleTensor]:
 def crank_nicolson_algorithm(
     hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float
 ):
-    identity = torch.tensor([[1.0, 0.0], [0.0, 1.0]], dtype=torch.complex128)
+    identity = torch.eye(psi.shape[0], dtype=torch.complex128)
     unitary_op = identity[None, :, :] + 0.5j * dt * hamiltonian
     unitary_op_star = identity[None, :, :] - 0.5j * dt * hamiltonian
     unitary = torch.einsum(
         "lab,lbc->lac", torch.linalg.inv(unitary_op), unitary_op_star
     )
     # unitary = torch.matrix_exp(-1j * dt * hamiltonian)
-    psi = torch.einsum("lab,lb->la", unitary, psi)
+    psi = torch.einsum("lab,bl->al", unitary, psi)
     # psi = psi - 0.5j * dt * torch.einsum("lab,lb->la", hamiltonian, psi)
     # impose the norm
     # psi = psi / torch.linalg.norm(psi, dim=-1)[:, None]
@@ -121,7 +121,7 @@ def crank_nicolson_algorithm(
 def exponentiation_algorithm(
     hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float
 ):
-    identity = torch.eye(2, dtype=torch.complex128)
+    identity = torch.eye(psi.shape[0], dtype=torch.complex128)
     p_1 = -1j * dt * hamiltonian.clone()
     p_2 = (-1j * dt) * torch.einsum("lab,lbc->lac", p_1, hamiltonian)
     p_3 = (-1j * dt) * torch.einsum("lab,lbc->lac", p_2, hamiltonian)
@@ -564,6 +564,77 @@ def nonlinear_schrodinger_step_zzx_model(
     return psi, omega_eff, df_dz, z
 
 
+def nonlinear_schrodinger_step_zzx_model_full_effective_field(
+    psi: torch.Tensor,
+    model: torch.nn.Module,
+    i: int,
+    h: torch.Tensor,
+    full_z: torch.Tensor,  # full z in size x time
+    self_consistent_step: int,
+    dt: float,
+    exponent_algorithm: bool,
+    #    dataset_z: torch.Tensor,
+):
+
+    # if i == 0:
+    #     dataset = dataset_z[:, 0, :].unsqueeze(1)
+    # else:
+    #     dataset = dataset_z[:, : i + 1, :]
+
+    # full_z_proj = z_dataset_projection(z=full_z, dataset=dataset)
+
+    df_dz = get_effective_field(z=full_z, model=model, i=-1)
+    h_eff = 0.5 * (h[i])  # + df_dz)
+
+    omega_eff = 0.5 * torch.ones_like(h_eff)
+    hamiltonian = torch.zeros((h_eff.shape[0], 2, 2), dtype=torch.complex128)
+    hamiltonian = build_hamiltonian(field_x=omega_eff, field_z=h_eff)
+
+    psi = exponentiation_algorithm(
+        hamiltonian=hamiltonian,
+        psi=psi,
+        dt=dt,
+    )
+
+    exp_hamiltonian = torch.matrix_exp(-1j * dt * hamiltonian)
+    psi = torch.einsum("lab,bl->al", exp_hamiltonian, psi)
+
+    hamiltonian_minus = hamiltonian.clone()
+    hamiltonian_plus = hamiltonian_minus.clone()
+    x, y, z = compute_the_magnetization(psi=psi)
+
+    for step in range(self_consistent_step):
+
+        # psi_plus = exponentiation_algorithm(
+        #     hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+        #     psi=psi,
+        #     dt=dt,
+        # )
+
+        exp_hamiltonian_plus = torch.matrix_exp(
+            -1j * dt * 0.5 * (hamiltonian_minus + hamiltonian_plus)
+        )
+        psi_plus = torch.einsum("lab,bl->al", exp_hamiltonian_plus, psi)
+
+        _, _, z_plus = compute_the_magnetization(psi=psi_plus)
+        full_z_plus = torch.cat((full_z, z_plus.unsqueeze(0)), dim=0)
+        # full_z_plus_proj = z_dataset_projection(z=full_z_plus, dataset=dataset)
+
+        df_dz = get_effective_field(z=full_z_plus, model=model, i=-1)
+        h_eff = 0.5 * (h[i + 1])  # + df_dz)
+
+        hamiltonian_plus = build_hamiltonian(field_x=omega_eff, field_z=h_eff)
+
+    # psi = exponentiation_algorithm(
+    #     hamiltonian=0.5 * (hamiltonian_plus + hamiltonian_minus),
+    #     psi=psi,
+    #     dt=dt,
+    # )
+
+    full_z = torch.cat((full_z, z.unsqueeze(0)), dim=0)
+    return psi, df_dz, full_z
+
+
 def nonlinear_schrodinger_step_zzxz_model(
     psi: torch.Tensor,
     model: torch.nn.Module,
@@ -630,3 +701,39 @@ def nonlinear_schrodinger_step_zzxz_model(
             dt=dt,
         )
     return psi, omega_eff, h_eff, z
+
+
+def get_effective_field(z: torch.tensor, model: nn.Module, i: int):
+    z = torch.einsum("ti->it", z)
+    effective_field = model(z.unsqueeze(0).double())[0, 0, :, i].detach()
+    return effective_field
+
+
+def z_pca(z: torch.Tensor, dataset: torch.Tensor):
+
+    mu = dataset.mean(0)
+    sigma = dataset.std(0)
+    # x = (dataset - mu[None, :, :]) / sigma[None, :, :]
+    x = dataset
+
+    cov_matrix = torch.einsum("ati,bti->ab", x, x) * (1 / (x.shape[0] - 1))
+    _, eigenvectors = torch.linalg.eigh(cov_matrix)
+    pca = torch.einsum("ab,bti->ati", eigenvectors, x) * (1 / (x.shape[0] - 1))
+
+    x_value = (z - mu) / sigma
+    z_a = torch.einsum("ati,ti->a", pca, z)
+    z_proj = torch.einsum("a,ati->ti", z_a, x)
+    # z_proj = sigma * x_proj + mu
+
+    return z_proj
+
+
+def z_dataset_projection(z: torch.Tensor, dataset: torch.Tensor):
+
+    coeff = torch.einsum("ati,ti->ai", dataset, z) / (
+        torch.einsum("ati,ati->ai", dataset, dataset)
+    )
+
+    z_projection = torch.mean(coeff[:, None, :] * dataset, dim=0)
+
+    return z_projection
