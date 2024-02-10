@@ -4,7 +4,7 @@ import numpy as np
 
 
 data = np.load(
-    "data/dataset_h_eff/quench/dataset_quench_nbatch_3_batchsize_3_steps_1000_tf_30.0_l_8.npz"
+    "data/dataset_h_eff/quench/dataset_quench_nbatch_10_batchsize_50_steps_1000_tf_30.0_l_8.npz"
 )
 
 

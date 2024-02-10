@@ -62,20 +62,20 @@ class Driving:
 
 # hyperparameters
 
-nbatch = 50
+nbatch = 10
 
 batch_size = 100
 l = 8
 rates = [0.1, 0.5, 0.8, 1.0, 2.0, 3.0]
 
-max_h = 1.0 + np.linspace(0.1, 3.0, nbatch)
-min_h = np.linspace(0.1, 3.0, nbatch)
+max_h = 1.0 + np.linspace(0.1, 1.5, nbatch)
+min_h = np.linspace(0.1, 1.5, nbatch)
 
 steps = 1000
 tf = 30.0
 time = np.linspace(0.0, tf, steps)
 
-z_qutip_tot = np.zeros((nbatch * (batch_size * batch_size), steps, l))
+z_qutip_tot = np.zeros((nbatch * nbatch * batch_size, steps, l))
 z_big_tot = np.zeros_like(z_qutip_tot)
 h_eff_tot = np.zeros_like(z_qutip_tot)
 h_tot = np.zeros_like(z_qutip_tot)
