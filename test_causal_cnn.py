@@ -25,4 +25,42 @@ print(output)
 plt.imshow(output.detach().numpy()[0, 0])
 plt.colorbar()
 
+# %% Results of the h_eff reconstruction
+import torch
+import matplotlib.pyplot as plt
+import numpy as np
+
+data = np.load(
+    "data/dataset_h_eff/reconstruction_dataset/reconstruction_dataset_max_shift_0.6_nbatch_100_batchsize_100_steps_1000_tf_30.0.npz"
+)
+
+z = data["z_exact"]
+z_reconstruction = data["z"]
+h_eff_exact = data["h_eff_exact"]
+h_eff = data["h_eff"]
+h_eff_reconstruction = data["h_eff_reconstruction"]
+
+print(h_eff.shape)
+# %%
+for i in range(1):
+    for j in range(h_eff.shape[-1]):
+        plt.plot(z[i, : z_reconstruction.shape[1], j], label="z")
+        plt.plot(z_reconstruction[i, :, j], label="z recon")
+        plt.show()
+
+for i in range(1):
+    for j in range(h_eff.shape[-1]):
+        plt.plot(h_eff_exact[i, :, j], label="h eff exact")
+        plt.plot(h_eff[i, :, j], label="h eff")
+        plt.plot(
+            h_eff_reconstruction[i, :, j],
+            label="h eff reconstruction",
+            linestyle="--",
+            linewidth=3,
+            color="red",
+        )
+        plt.legend()
+        plt.show()
+
+
 # %%

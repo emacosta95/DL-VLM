@@ -236,12 +236,13 @@ for q in range(nbatch):
     # psi = initialize_psi_from_xyz(z=-1 * zi[0], x=zi[1], y=torch.zeros_like(zi[1]))
     # density matrix initialization
     psi = initialize_psi_from_z(z=-1 * zi)
+    print("psi.shape", psi.shape)
 
     h_eff = torch.zeros((time_stop, l))
     t_bar = tqdm(enumerate(time))
     for i in trange(time_stop - 1):
         t = time[i]
-
+        print("H SHAPE=", h.shape)
         psi, df, z_evolution = (
             nonlinear_schrodinger_step_zzx_model_full_effective_field(
                 psi=psi,
@@ -271,22 +272,62 @@ for q in range(nbatch):
         #     h_eff=h_eff_tot[:, :i],
         #     h_eff_exact=h_eff_tot_exact[:, :i],
         #     time=time[:i],
+    for j in range(l):
+        plt.figure(figsize=(10, 10))
+        plt.title(f"site={j}", fontsize=40)
+        plt.plot(time[:time_stop], z_exp[:time_stop, j], label="exact")
+        plt.plot(
+            time[:time_stop],
+            z_evolution[:time_stop, j],
+            color="red",
+            linestyle="--",
+            linewidth=5,
+            label="from reconstruction",
+        )
+        plt.legend(fontsize=40)
+        plt.xlabel(r"$t[1/J]$", fontsize=40)
+        plt.ylabel(r"$z_i(t)$", fontsize=40)
+        plt.tick_params(
+            which="both",
+            left=True,
+            right=True,
+            labelleft=True,
+            labelright=True,
+            direction="inout",
+            length=5,
+            colors="black",
+            labelsize=40,
+        )
+        plt.show()
+    for j in range(l):
+        plt.figure(figsize=(10, 10))
+        plt.title(f"site={j}", fontsize=40)
+        plt.plot(time[:time_stop], heff.numpy()[:time_stop, j], label="reconstructed")
+        plt.plot(
+            time[:time_stop],
+            h_eff_exact[:time_stop, j],
+            label="exact",
+            linewidth=5,
+            linestyle="--",
+        )
+        plt.plot(time[:time_stop], h_eff[:time_stop, j], label="TDDFT", linewidth=5)
+        plt.legend(fontsize=40)
+        plt.xlabel(r"$t[1/J]$", fontsize=40)
+        plt.ylabel(r"$z_i(t)$", fontsize=40)
+        plt.tick_params(
+            which="both",
+            left=True,
+            right=True,
+            labelleft=True,
+            labelright=True,
+            direction="inout",
+            length=5,
+            width=3,
+            colors="black",
+            labelsize=40,
+        )
 
-    plt.plot(z_exp[:time_stop, 0])
-    plt.plot(z_evolution[:time_stop, 0])
-    plt.show()
-
-    plt.plot(
-        heff_1stversion.numpy()[:time_stop, 0],
-        label="reconstructed first version",
-        linewidth=3,
-        linestyle="--",
-    )
-    plt.plot(heff.numpy()[:time_stop, 0], label="reconstructed")
-    plt.plot(h_eff_exact[:time_stop, 0], label="exact")
-    # plt.plot(h_eff[:time_stop, 0], label="TDDFT")
-    plt.legend()
-    plt.show()
+        plt.show()
 
 # %%
 smooth_heff = (heff + torch.roll(heff, shifts=1, dims=0)) / 2

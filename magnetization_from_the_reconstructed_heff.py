@@ -9,9 +9,10 @@ from src.training.models_adiabatic import EnergyReductionXXZ
 from src.qutip_lab.qutip_class import SpinOperator, SpinHamiltonian, SteadyStateSolver
 
 from src.tddft_methods.kohm_sham_utils import (
-    initialize_psi_from_z,
-    nonlinear_schrodinger_step_zzx_model_full_effective_field,
+    initialize_psi_from_z_parallel,
+    nonlinear_schrodinger_step_zzx_model_full_effective_field_parallel,
     get_effective_field,
+    parallelized_compute_the_magnetization,
 )
 from src.gradient_descent import GradientDescentKohmSham
 import qutip
@@ -21,40 +22,6 @@ import os
 # Set the seed for generating random numbers
 np.random.seed(42)
 torch.manual_seed(42)
-
-
-def generate_smooth_gaussian_noise(
-    time: np.ndarray,
-    tau: float,
-    tf: float,
-    mean: float,
-    sigma: float,
-    min_range: float,
-    max_range: float,
-    shift: float,
-):
-    a_omegas = np.random.normal(mean, sigma, size=time.shape[0])
-    omegas = np.linspace(0, time.shape[0] * 2 * np.pi / tf, time.shape[0])
-    driving = np.zeros(time.shape[0])
-
-    for tr in range(time.shape[0]):
-        if omegas[tr] < 2 * np.pi / tau:
-            driving = driving + a_omegas[tr] * np.cos(omegas[tr] * time)
-
-        else:
-            break
-
-    max_driving = np.max(driving)
-    min_driving = np.min(driving)
-
-    old_interval = max_driving - min_driving
-    driving = (
-        (driving - min_driving) * (max_range - min_range) / old_interval
-        + min_range
-        + shift
-    )
-
-    return driving
 
 
 class Driving:
@@ -97,25 +64,27 @@ data_file_name = "dataset_max_shift_0.6_nbatch_100_batchsize_100_steps_1000_tf_3
 
 data = np.load("data/dataset_h_eff/" + data_file_name)
 
-h_tot = data["h"]
-z_exact = data["z"]
-h_eff_exact = data["h_eff"]
+h_tot = data["h"][:, 1:]
+z_exact = data["z"][:, 1:]
+h_eff_exact = data["h_eff"][:, 1:]
 print(h_tot[0])
 print(h_tot.shape)
+print("z_exact_shape=", z_exact.shape)
 # initialization
 exponent_algorithm = True
 self_consistent_step = 0
-nbatch = z_exact.shape[0]
+nbatch = 10
+batch_size = 100
 
-steps = 1000
+steps = 999
 tf = 30.0
 time = np.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
 print(dt)
 
-z_tot = np.zeros((nbatch, steps, l))
+z_tot = np.zeros((nbatch * batch_size, steps, l))
 h_eff_tot = np.zeros_like(z_tot)
-
+h_eff_reconstruction = np.zeros_like(z_tot)
 
 # %% Compute the initial ground state configuration
 
@@ -123,58 +92,62 @@ h_eff_tot = np.zeros_like(z_tot)
 for q in trange(nbatch):
     # Qutip Dynamics
     # Hamiltonian
-    h = h_tot[q]
+    h = h_tot[q * batch_size : (q + 1) * (batch_size)]
 
     # build up the time dependent object for the qutip evolution
 
-    input = torch.einsum("ti->it", torch.tensor(z_tot[q]))
-    heff = model(input.unsqueeze(0)).detach().squeeze()
-    heff = torch.einsum("it->ti", heff)
-    # initial magnetization
-    z_evolution = (
-        torch.tensor(z_tot[q, 0]).clone().unsqueeze(0)
-    )  # initialize the evolution
+    input = torch.einsum(
+        "rti->rit",
+        torch.tensor(z_exact[q * batch_size : (q + 1) * (batch_size), :steps]),
+    )
+    heff = model(input).detach().squeeze()
+    heff = torch.einsum("rit->rti", heff)
+    # initialize the evolution
+
     #  Kohm Sham step 1) Initialize the state from an initial magnetization
 
-    # density matrix initialization
-    psi = initialize_psi_from_z(z=-1 * torch.tensor(z_tot[q, 0]))
+    # initialize psi
+    zi = torch.tensor(z_exact[q * batch_size : (q + 1) * (batch_size), 0])
+    # print(zi.shape)
+    # initial magnetization
+    z_evolution = zi.clone().unsqueeze(1)
 
-    h_eff = torch.zeros((steps, l))
+    psi = initialize_psi_from_z_parallel(z=-1 * zi)
+
+    _, _, z_test = parallelized_compute_the_magnetization(psi)
+    # print("TEST=", z_test - zi)
+
+    h_eff = torch.zeros((h.shape[0], steps, l))
     t_bar = tqdm(enumerate(time))
     for i in trange(steps - 1):
         t = time[i]
         psi, df, z_evolution = (
-            nonlinear_schrodinger_step_zzx_model_full_effective_field(
+            nonlinear_schrodinger_step_zzx_model_full_effective_field_parallel(
                 psi=psi,
                 model=model,
                 i=i,
-                h=torch.tensor(h_tot[q]) + heff,
+                h=torch.tensor(h[:, :steps])
+                + torch.tensor(heff[q * batch_size : (q + 1) * (batch_size), :steps]),
                 full_z=z_evolution,  # full z in size x time
                 self_consistent_step=self_consistent_step,
                 dt=dt,
                 exponent_algorithm=exponent_algorithm,
             )
         )
-        h_eff[i] = df
+        h_eff[:, i] = df
 
-    h_eff_tot[q] = h_eff
-    z_tot[q] = z_evolution.detach().numpy()
+    h_eff_tot[q * batch_size : (q + 1) * (batch_size)] = h_eff
+    z_tot[q * batch_size : (q + 1) * (batch_size)] = z_evolution.detach().numpy()
+    h_eff_reconstruction[q * batch_size : (q + 1) * (batch_size)] = (
+        heff.detach().numpy()
+    )
 
-    if q % 100 == 0:
-        np.savez(
-            "data/dataset_h_eff/reconstruction_dataset/reconstruction_"
-            + data_file_name,
-            z_exact=z_exact,
-            h=h_tot,
-            h_eff_exact=h_eff_exact,
-            h_eff=h_eff_tot,
-        )
-
-
-np.savez(
-    "data/dataset_h_eff/reconstruction_dataset/reconstruction_" + data_file_name,
-    z_exact=z_exact,
-    h=h_tot,
-    h_eff_exact=h_eff_exact,
-    h_eff=h_eff_tot,
-)
+    np.savez(
+        "data/dataset_h_eff/reconstruction_dataset/reconstruction_" + data_file_name,
+        z_exact=z_exact,
+        h=h_tot,
+        h_eff_exact=h_eff_exact,
+        h_eff=h_eff_tot,
+        h_eff_reconstruction=h_eff_reconstruction,
+        z=z_tot,
+    )

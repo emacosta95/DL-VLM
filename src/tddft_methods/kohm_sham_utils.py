@@ -77,6 +77,15 @@ def initialize_psi_from_z(z: torch.DoubleTensor) -> torch.ComplexType:
     return psi
 
 
+def initialize_psi_from_z_parallel(z: torch.DoubleTensor) -> torch.ComplexType:
+    psi = torch.zeros(size=(z.shape[0], 2, z.shape[-1]), dtype=torch.complex128)
+    a = torch.sqrt((1 - z) / 2)
+    b = torch.sqrt((1 + z) / 2)
+    psi[:, 0, :] = a
+    psi[:, 1, :] = b
+    return psi
+
+
 def build_hamiltonian(
     field_x: torch.DoubleTensor, field_z: torch.DoubleTensor
 ) -> torch.ComplexType:
@@ -87,6 +96,32 @@ def build_hamiltonian(
         field_x[:, None, None] * x_operator[None, :, :]
         + field_z[:, None, None] * z_operator[None, :, :]
     )
+
+
+def parallelized_build_hamiltonian(
+    field_x: torch.DoubleTensor, field_z: torch.DoubleTensor
+) -> torch.ComplexType:
+    x_operator = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.complex128)
+    z_operator = torch.tensor([[1.0, 0.0], [0.0, -1.0]], dtype=torch.complex128)
+
+    return (
+        field_x[:, :, None, None] * x_operator[None, None, :, :]
+        + field_z[:, :, None, None] * z_operator[None, None, :, :]
+    )
+
+
+def parallelized_compute_the_magnetization(
+    psi: torch.Tensor,
+) -> Tuple[torch.DoubleTensor]:
+    x_operator = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.complex128)
+    z_operator = torch.tensor([[1.0, 0.0], [0.0, -1.0]], dtype=torch.complex128)
+    y_operator = torch.tensor([[0.0, -1j], [1j, 0.0]], dtype=torch.complex128)
+
+    x = torch.einsum("ril,ij,rjl->rl", torch.conj(psi), x_operator, psi).double()
+    z = torch.einsum("ril,ij,rjl->rl", torch.conj(psi), z_operator, psi).double()
+    y = torch.einsum("ril,ij,rjl->rl", torch.conj(psi), y_operator, psi).double()
+
+    return x.detach(), y.detach(), z.detach()
 
 
 def compute_the_magnetization(psi: torch.Tensor) -> Tuple[torch.DoubleTensor]:
@@ -132,6 +167,24 @@ def exponentiation_algorithm(
     )  # torch.matrix_exp(-1j * dt * hamiltonian)
 
     psi = torch.einsum("lab,bl->al", unitary, psi)
+    psi = psi / torch.linalg.norm(psi, dim=0)[None, :]
+    return psi
+
+
+def parallelized_exponentiation_algorithm(
+    hamiltonian: torch.ComplexType, psi: torch.ComplexType, dt: float
+):
+    identity = torch.eye(psi.shape[1], dtype=torch.complex128)
+    p_1 = -1j * dt * hamiltonian.clone()
+    p_2 = (-1j * dt) * torch.einsum("rlab,rlbc->rlac", p_1, hamiltonian)
+    p_3 = (-1j * dt) * torch.einsum("rlab,rlbc->rlac", p_2, hamiltonian)
+    p_4 = (-1j * dt) * torch.einsum("rlab,rlbc->rlac", p_3, hamiltonian)
+
+    unitary = (
+        identity[None, :, :] + p_1 + p_2 / 2 + p_3 / (2 * 3) + p_4 / (2 * 3 * 4)
+    )  # torch.matrix_exp(-1j * dt * hamiltonian)
+
+    psi = torch.einsum("rlab,rbl->ral", unitary, psi)
     psi = psi / torch.linalg.norm(psi, dim=0)[None, :]
     return psi
 
@@ -564,6 +617,80 @@ def nonlinear_schrodinger_step_zzx_model(
     return psi, omega_eff, df_dz, z
 
 
+def nonlinear_schrodinger_step_zzx_model_full_effective_field_parallel(
+    psi: torch.Tensor,
+    model: torch.nn.Module,
+    i: int,
+    h: torch.Tensor,
+    full_z: torch.Tensor,  # full z in size x time
+    self_consistent_step: int,
+    dt: float,
+    exponent_algorithm: bool,
+    #    dataset_z: torch.Tensor,
+):
+
+    # if i == 0:
+    #     dataset = dataset_z[:, 0, :].unsqueeze(1)
+    # else:
+    #     dataset = dataset_z[:, : i + 1, :]
+
+    # full_z_proj = z_dataset_projection(z=full_z, dataset=dataset)
+
+    df_dz = get_effective_field_parallel(z=full_z, model=model, i=-1)
+    h_eff = h[:, i]  # + df_dz)
+
+    omega_eff = torch.ones_like(h_eff)
+    hamiltonian = parallelized_build_hamiltonian(field_x=omega_eff, field_z=h_eff)
+
+    psi_old = psi.clone()
+
+    exp_hamiltonian = torch.matrix_exp(-1j * dt * hamiltonian)
+    # psi = parallelized_exponentiation_algorithm(
+    #     hamiltonian=hamiltonian,
+    #     psi=psi,
+    #     dt=dt,
+    # )
+    psi = torch.einsum("rlab,rbl->ral", exp_hamiltonian, psi)
+    # print("TEST PSI=", psi - psi_old)
+
+    hamiltonian_minus = hamiltonian.clone()
+    hamiltonian_plus = hamiltonian_minus.clone()
+    x, y, z = parallelized_compute_the_magnetization(psi=psi)
+
+    for step in range(self_consistent_step):
+
+        psi_plus = parallelized_exponentiation_algorithm(
+            hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+            psi=psi,
+            dt=dt,
+        )
+
+        exp_hamiltonian_plus = torch.matrix_exp(
+            -1j * dt * 0.5 * (hamiltonian_minus + hamiltonian_plus)
+        )
+        psi_plus = torch.einsum("lab,bl->al", exp_hamiltonian_plus, psi)
+
+        _, _, z_plus = parallelized_compute_the_magnetization(psi=psi_plus)
+        full_z_plus = torch.cat((full_z, z_plus.unsqueeze(1)), dim=0)
+        # full_z_plus_proj = z_dataset_projection(z=full_z_plus, dataset=dataset)
+
+        df_dz = get_effective_field_parallel(z=full_z_plus, model=model, i=-1)
+        h_eff = 0.5 * (h[:, i + 1])  # + df_dz)
+
+        hamiltonian_plus = parallelized_build_hamiltonian(
+            field_x=omega_eff, field_z=h_eff
+        )
+
+    # psi = exponentiation_algorithm(
+    #     hamiltonian=0.5 * (hamiltonian_plus + hamiltonian_minus),
+    #     psi=psi,
+    #     dt=dt,
+    # )
+    # print("FULL Z SHAPE=", full_z.shape, z.shape)
+    full_z = torch.cat((full_z, z.unsqueeze(1)), dim=1)
+    return psi, df_dz, full_z
+
+
 def nonlinear_schrodinger_step_zzx_model_full_effective_field(
     psi: torch.Tensor,
     model: torch.nn.Module,
@@ -584,20 +711,19 @@ def nonlinear_schrodinger_step_zzx_model_full_effective_field(
     # full_z_proj = z_dataset_projection(z=full_z, dataset=dataset)
 
     df_dz = get_effective_field(z=full_z, model=model, i=-1)
-    h_eff = 0.5 * (h[i])  # + df_dz)
 
-    omega_eff = 0.5 * torch.ones_like(h_eff)
-    hamiltonian = torch.zeros((h_eff.shape[0], 2, 2), dtype=torch.complex128)
+    h_eff = h[i]  # + df_dz)
+
+    omega_eff = torch.ones_like(h_eff)
     hamiltonian = build_hamiltonian(field_x=omega_eff, field_z=h_eff)
 
+    # exp_hamiltonian = torch.matrix_exp(-1j * dt * hamiltonian)
     psi = exponentiation_algorithm(
         hamiltonian=hamiltonian,
         psi=psi,
         dt=dt,
     )
-
-    exp_hamiltonian = torch.matrix_exp(-1j * dt * hamiltonian)
-    psi = torch.einsum("lab,bl->al", exp_hamiltonian, psi)
+    # psi = torch.einsum("rlab,rbl->ral", exp_hamiltonian, psi)
 
     hamiltonian_minus = hamiltonian.clone()
     hamiltonian_plus = hamiltonian_minus.clone()
@@ -605,16 +731,16 @@ def nonlinear_schrodinger_step_zzx_model_full_effective_field(
 
     for step in range(self_consistent_step):
 
-        # psi_plus = exponentiation_algorithm(
-        #     hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
-        #     psi=psi,
-        #     dt=dt,
-        # )
-
-        exp_hamiltonian_plus = torch.matrix_exp(
-            -1j * dt * 0.5 * (hamiltonian_minus + hamiltonian_plus)
+        psi_plus = exponentiation_algorithm(
+            hamiltonian=0.5 * (hamiltonian_minus + hamiltonian_plus),
+            psi=psi,
+            dt=dt,
         )
-        psi_plus = torch.einsum("lab,bl->al", exp_hamiltonian_plus, psi)
+
+        # exp_hamiltonian_plus = torch.matrix_exp(
+        #    -1j * dt * 0.5 * (hamiltonian_minus + hamiltonian_plus)
+        # )
+        # psi_plus = torch.einsum("lab,bl->al", exp_hamiltonian_plus, psi)
 
         _, _, z_plus = compute_the_magnetization(psi=psi_plus)
         full_z_plus = torch.cat((full_z, z_plus.unsqueeze(0)), dim=0)
@@ -703,9 +829,19 @@ def nonlinear_schrodinger_step_zzxz_model(
     return psi, omega_eff, h_eff, z
 
 
+def get_effective_field_parallel(z: torch.tensor, model: nn.Module, i: int):
+    z = torch.einsum("rti->rit", z)
+    # print("shape input", z.shape)
+    effective_field = model(z.double())
+    effective_field = effective_field[:, :, :, i].squeeze().detach()
+    return effective_field
+
+
 def get_effective_field(z: torch.tensor, model: nn.Module, i: int):
     z = torch.einsum("ti->it", z)
-    effective_field = model(z.unsqueeze(0).double())[0, 0, :, i].detach()
+    # print("shape input", z.shape)
+    effective_field = model(z.unsqueeze(0).double())
+    effective_field = effective_field[0, 0, :, i].detach()
     return effective_field
 
 
