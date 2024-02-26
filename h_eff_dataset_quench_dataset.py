@@ -62,20 +62,25 @@ class Driving:
 
 # hyperparameters
 
-nbatch = 10
+nbatch = 100
 
-batch_size = 100
+batch_size = 1000
 l = 8
-rates = [0.1, 0.5, 0.8, 1.0, 2.0, 3.0]
+#rates = [0.1, 0.5, 0.8, 1.0]
 
-max_h = 1.0 + np.linspace(0.1, 1.5, nbatch)
-min_h = np.linspace(0.1, 1.5, nbatch)
+rate=1.0
+
+range_h=np.linspace(0.6,1.,nbatch)
+
+#max_h = 1.0 + np.linspace(0.1, 1., nbatch)
+#min_h = np.linspace(0.1, 1., nbatch)
 
 steps = 1000
 tf = 30.0
 time = np.linspace(0.0, tf, steps)
 
-z_qutip_tot = np.zeros((nbatch * nbatch * batch_size, steps, l))
+#z_qutip_tot = np.zeros((nbatch * nbatch * batch_size, steps, l))
+z_qutip_tot=np.zeros((nbatch  * batch_size, steps, l))
 z_big_tot = np.zeros_like(z_qutip_tot)
 h_eff_tot = np.zeros_like(z_qutip_tot)
 h_tot = np.zeros_like(z_qutip_tot)
@@ -103,19 +108,22 @@ for i in range(l):
     current_obs.append(current.qutip_op)
 
 for idx_batch in trange(0, nbatch):
-    for jdx_batch in trange(0, nbatch):
-        hi = np.random.uniform(min_h[idx_batch], max_h[idx_batch], size=(batch_size, l))
-        hf = np.random.uniform(min_h[jdx_batch], max_h[jdx_batch], size=(batch_size, l))
+    #for jdx_batch in trange(0, nbatch):
+        #hi = np.random.uniform(min_h[idx_batch], max_h[idx_batch], size=(batch_size, l))
+        #hf = np.random.uniform(min_h[jdx_batch], max_h[jdx_batch], size=(batch_size, l))
+        hi=np.random.uniform(range_h[idx_batch],range_h[idx_batch]+1.,size=(batch_size,l))
+        
+        
 
         for idx in trange(0, batch_size):
 
-            random_int = np.random.randint(len(rates))
-            rate = rates[random_int]
-
-            h = (
-                np.exp(-1 * rate * time)[:, None] * hi[idx, None, :]
-                + (1 - np.exp(-1 * rate * time)[:, None]) * hf[idx, None, :]
-            )
+            #random_int = np.random.randint(len(rates))
+            #rate = rates[random_int]
+            h=0.5*np.cos(time*rate)[:,None]+hi[idx,None,:]
+            #h = (
+            #    np.exp(-1 * rate * time)[:, None] * hi[idx, None, :]
+            #    + (1 - np.exp(-1 * rate * time)[:, None]) * hf[idx, None, :]
+            #)
 
             hamExtZ = SpinOperator(
                 index=[("z", i) for i in range(l)], coupling=h[0], size=l
@@ -162,35 +170,43 @@ for idx_batch in trange(0, nbatch):
 
             current_derivative = np.gradient(current_exp, time, axis=0)
             x_sp = np.sqrt(1 - z_exp**2) * np.cos(
-                np.arcsin(-1 * (current_exp) / (2 * np.sqrt(1 - z_exp**2)))
+                np.arcsin(-1 * (current_exp) / (2 * np.sqrt(1 - z_exp**2)+10**-4))
             )
             h_eff = (0.25 * current_derivative + z_exp) / (x_sp + 10**-4) - h
 
-            z_qutip_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = z_exp
-            current_qutip_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = (
+            # z_qutip_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = z_exp
+            # current_qutip_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = (
+            #     current_exp
+            # )
+            # current_derivative_tot[
+            #     (batch_size * (jdx_batch + nbatch * idx_batch) + idx)
+            # ] = current_derivative
+            # h_eff_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = h_eff
+            # h_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = h
+            
+            h_eff_tot[(batch_size*(idx_batch) + idx)] = h_eff
+            h_tot[(batch_size*(idx_batch) + idx)] = h
+            z_qutip_tot[(batch_size*(idx_batch) + idx)]=z_exp
+            current_qutip_tot[(batch_size*(idx_batch) + idx)] = (
                 current_exp
             )
-
-            current_derivative_tot[
-                (batch_size * (jdx_batch + nbatch * idx_batch) + idx)
-            ] = current_derivative
-
-            h_eff_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = h_eff
-            h_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = h
+            current_derivative_tot[(batch_size * ( idx_batch) + idx)]=current_derivative
         np.savez(
-            f"data/dataset_h_eff/quench/dataset_quench_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}",
+            f"data/dataset_h_eff/periodic/dataset_periodic_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240220",
             current=current_qutip_tot,
             z=z_qutip_tot,
             h_eff=h_eff_tot,
             current_derivative=current_derivative_tot,
             h=h_tot,
+            time=time
         )
 
 np.savez(
-    f"data/dataset_h_eff/quench/dataset_quench_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}",
+    f"data/dataset_h_eff/periodic/dataset_periodic_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240220",
     current=current_qutip_tot,
     z=z_qutip_tot,
     h_eff=h_eff_tot,
     current_derivative=current_derivative_tot,
     h=h_tot,
+    time=time
 )

@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from typing import Tuple
 
 
-class REDENTnopooling(nn.Module):
+class REDENTnopooling2D(nn.Module):
     def __init__(
         self,
         n_conv_layers: int = None,
@@ -60,7 +60,7 @@ class REDENTnopooling(nn.Module):
                     block = nn.Sequential()
                     block.add_module(
                         f"conv{i+1}",
-                        nn.Conv1d(
+                        nn.Conv2d(
                             dilation=1,
                             stride=1,
                             in_channels=in_channels,
@@ -77,7 +77,7 @@ class REDENTnopooling(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv1d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[i],
@@ -99,7 +99,7 @@ class REDENTnopooling(nn.Module):
                     block = nn.Sequential()
                     block.add_module(
                         f"conv{i+1}",
-                        nn.Conv1d(
+                        nn.Conv2d(
                             dilation=1,
                             stride=1,
                             in_channels=hidden_channels[i - 1],
@@ -116,7 +116,7 @@ class REDENTnopooling(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv1d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[i],
@@ -139,7 +139,7 @@ class REDENTnopooling(nn.Module):
 
                     block.add_module(
                         f"conv{i+1}",
-                        nn.Conv1d(
+                        nn.Conv2d(
                             dilation=1,
                             stride=1,
                             in_channels=hidden_channels[i - 1],
@@ -158,7 +158,7 @@ class REDENTnopooling(nn.Module):
 
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv1d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[i],
@@ -181,7 +181,7 @@ class REDENTnopooling(nn.Module):
                     block = nn.Sequential()
                     block.add_module(
                         f"trans_conv{i+1}",
-                        nn.Conv1d(
+                        nn.Conv2d(
                             stride=1,
                             in_channels=hidden_channels[n_conv_layers - 1 - i],
                             out_channels=hidden_channels[n_conv_layers - 1 - (i + 1)],
@@ -200,7 +200,7 @@ class REDENTnopooling(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv1d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[
@@ -226,7 +226,7 @@ class REDENTnopooling(nn.Module):
                     block = nn.Sequential()
                     block.add_module(
                         f"trans_conv{i+1}",
-                        nn.Conv1d(
+                        nn.Conv2d(
                             stride=1,
                             in_channels=hidden_channels[n_conv_layers - 1 - (i)],
                             out_channels=hidden_channels[n_conv_layers - 1 - (i + 1)],
@@ -245,7 +245,7 @@ class REDENTnopooling(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv1d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[
@@ -272,7 +272,7 @@ class REDENTnopooling(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv1d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[
@@ -296,7 +296,7 @@ class REDENTnopooling(nn.Module):
 
                     block.add_module(
                         f"trans_conv{i+1}",
-                        nn.Conv1d(
+                        nn.Conv2d(
                             stride=1,
                             in_channels=hidden_channels[n_conv_layers - 1 - (i)],
                             out_channels=self.in_channels,
@@ -314,6 +314,7 @@ class REDENTnopooling(nn.Module):
         for block in self.conv_downsample:
             # print(x.shape)
             x = block(x)
+            
             outputs.append(x)
         for i, block in enumerate(self.conv_upsample):
             # print(x.shape)

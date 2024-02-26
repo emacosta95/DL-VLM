@@ -86,7 +86,7 @@ class Driving:
 l = 8
 
 model = torch.load(
-    "model_rep/kohm_sham/model_current_t_interval_500_240202_[40, 40, 40, 40, 40, 40]_hc_[3, 5]_ks_1_ps_6_nconv_1_nblock",
+    "model_rep/kohm_sham/cnn_density2field/model_density2field_periodic_time_interval_300_240216_periodic_dataset_[80, 80, 80, 80, 80, 80]_hc_[5, 25]_ks_1_ps_6_nconv_1_nblock",
     map_location="cpu",
 )
 model.eval()
@@ -94,7 +94,7 @@ model = model.to(dtype=torch.double)
 
 # dataset for the driving
 data = np.load(
-    "data/dataset_h_eff/dataset_max_shift_0.6_nbatch_100_batchsize_100_steps_1000_tf_30.0.npz"
+    "data/dataset_h_eff/periodic/dataset_periodic_nbatch_100_batchsize_1000_steps_1000_tf_30.0_l_8.npz"
 )
 
 h_tot = data["h"][300:400]

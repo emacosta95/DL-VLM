@@ -42,7 +42,7 @@ class Driving:
 index_level = -1
 
 model = torch.load(
-    "model_rep/kohm_sham/cnn_field2field/model_field2field_t_interval_500_240207_max_shift_06_[100, 100, 100, 100, 100]_hc_[3, 9]_ks_1_ps_5_nconv_1_nblock",
+    "model_rep/kohm_sham/cnn_field2field/model_field2field_periodic_time_interval_300_240218_periodic_dataset_[80, 80, 80, 80, 80, 80]_hc_[5, 25]_ks_1_ps_6_nconv_1_nblock",
     map_location="cpu",
 )
 
@@ -50,7 +50,7 @@ model.eval()
 
 
 data = np.load(
-    "data/dataset_h_eff/dataset_max_shift_0.6_nbatch_100_batchsize_100_steps_1000_tf_30.0.npz"
+    "data/dataset_h_eff/periodic/dataset_periodic_nbatch_100_batchsize_1000_steps_1000_tf_30.0_l_8.npz"
 )
 
 h = data["h"]
@@ -62,13 +62,13 @@ time = np.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
 gamma=1.
 
-hi = np.random.uniform(1.0, 2.0, size=5)[:, None] * np.ones(l)[None, :]
-hf = np.random.uniform(0.0, 1.0, size=5) * np.ones(l)[None, :]
+# hi = np.random.uniform(1.0, 2.0, size=5)[:, None] * np.ones(l)[None, :]
+# hf = np.random.uniform(0.0, 1.0, size=5) * np.ones(l)[None, :]
 
-h = (
-    hi[None, :,None] * np.exp(-1 * gamma * time[None, :, None])
-    + (1 - np.exp(-1 * gamma * time[None, :, None])) * hf[None, :,None]
-)
+# h = (
+#     hi[None, :,None] * np.exp(-1 * gamma * time[None, :, None])
+#     + (1 - np.exp(-1 * gamma * time[None, :, None])) * hf[None, :,None]
+# )
 
 h_test = np.einsum("ati->ait", h)
 
@@ -92,8 +92,8 @@ h_eff_test = np.einsum("ati->ait", h_eff_exact)
 density_torch = torch.tensor(density)
 h_eff_torch = torch.tensor(h_eff_test)
 
-idx_batch = 90
-batch_size = 100
+idx_batch = 5
+batch_size = 50
 print(idx_batch * batch_size, (idx_batch + 1) * batch_size)
 x = density_torch[idx_batch * batch_size : (idx_batch + 1) * batch_size]
 
@@ -139,10 +139,7 @@ for i in range(2):
 # %%
 l = 8
 
-model = torch.load(
-    "model_rep/kohm_sham/cnn_field2field/model_field2field_t_interval_500_240207_max_shift_06_[100, 100, 100, 100, 100]_hc_[3, 9]_ks_1_ps_5_nconv_1_nblock",
-    map_location="cpu",
-)
+
 
 model.eval()
 

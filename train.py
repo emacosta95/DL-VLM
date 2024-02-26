@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from src.training.models import TDDFTCNNNoMemory, Causal_REDENT2D, LSTMTDDFT
 from src.training.unet_recurrent import UnetLSTM_beta
-from src.training.model_unet import REDENTnopooling
+from src.training.model_unet import REDENTnopooling2D
 from src.training.train_module import fit
 from src.training.seq2seq import Seq2Seq
 from src.training.utils import (
@@ -97,8 +97,8 @@ parser.add_argument(
 parser.add_argument(
     "--bs",
     type=int,
-    help="batch size (default=100)",
-    default=100,
+    help="batch size (default=50)",
+    default=50,
 )
 
 
@@ -120,6 +120,9 @@ parser.add_argument(
     default=5,
 )
 
+parser.add_argument(
+    "--output_channels", type=int, help="# output channels (default=1)", default=1
+)
 
 parser.add_argument(
     "--hidden_channels",
@@ -170,6 +173,7 @@ parser.add_argument(
 parser.add_argument(
     "--padding",
     type=int,
+    nargs='+',
     help="padding dimension (default=2)",
     default=1,
 )
@@ -240,6 +244,7 @@ def main(args):
     output_size = input_size
     pooling_size = args.pooling_size
     padding = args.padding  # 6
+    print('padding=',padding)
     padding_mode = args.padding_mode
     kernel_size = args.kernel_size  # 13
     n_conv_layers = len(args.hidden_channels)
@@ -296,17 +301,22 @@ def main(args):
         history_train = []
         history_best = []
 
-        if args.model_type == "TDDFTRecurrent":
-            model = None
-            # model = TDDFTRecurrent(
-            #     Loss=nn.MSELoss(),
-            #     in_channels=input_channels,
-            #     Activation=nn.ReLU(),
-            #     hidden_channels=hc[0],
-            #     ks=kernel_size,
-            #     padding_mode="zeros",
-            #     n_conv_layers=n_conv_layers,
-            # )
+        if args.model_type == "REDENTnopooling2D":
+            model = REDENTnopooling2D(
+                Loss=nn.MSELoss(),
+                in_channels=input_channels,
+                Activation=nn.ReLU(),
+                hidden_channels=hc,
+                ks=kernel_size,
+                padding=padding,
+                padding_mode=padding_mode,
+                # pooling_size=pooling_size,
+                n_conv_layers=n_conv_layers,
+                out_features=output_size,
+                in_features=input_size,
+                out_channels=args.output_channels,
+                n_block_layers=1,
+            )
 
         elif args.model_type == "Seq2Seq":
             pixel = False
@@ -322,7 +332,7 @@ def main(args):
         elif args.model_type == "TDDFTCNN":
             pixel = False
             model = TDDFTCNNNoMemory(
-                Loss=nn.L1Loss(),
+                Loss=nn.MSELoss(),
                 in_channels=input_channels,
                 Activation=nn.ReLU(),
                 hidden_channels=hc,

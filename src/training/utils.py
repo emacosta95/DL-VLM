@@ -64,7 +64,7 @@ def make_data_loader_unet(
             x[n_train:,:, :time_interval],
             y[n_train:, :, :time_interval],
         )
-        valid_dl = DataLoader(valid_ds, 2 * bs, shuffle=True)
+        valid_dl = DataLoader(valid_ds,  bs, shuffle=True)
     else:
         x = k1
         y = k2
@@ -77,7 +77,7 @@ def make_data_loader_unet(
             x[n_train:, :time_interval],
             y[n_train:, :time_interval],
         )
-        valid_dl = DataLoader(valid_ds, 2 * bs, shuffle=True)
+        valid_dl = DataLoader(valid_ds,  bs, shuffle=True)
 
     return train_dl, valid_dl
 
