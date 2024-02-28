@@ -6,7 +6,7 @@ import numpy as np
 import torch as pt
 import torch.nn as nn
 
-from src.training.models import TDDFTCNNNoMemory, Causal_REDENT2D, LSTMTDDFT
+from src.training.models import TDDFTCNNNoMemory,  LSTMTDDFT
 from src.training.unet_recurrent import UnetLSTM_beta
 from src.training.model_unet import REDENTnopooling2D
 from src.training.train_module import fit
@@ -97,8 +97,8 @@ parser.add_argument(
 parser.add_argument(
     "--bs",
     type=int,
-    help="batch size (default=50)",
-    default=50,
+    help="batch size (default=100)",
+    default=100,
 )
 
 
@@ -317,6 +317,9 @@ def main(args):
                 out_channels=args.output_channels,
                 n_block_layers=1,
             )
+            
+        elif args.model_type=='LSTM':
+            model=LSTMTDDFT(input_size=input_size,hidden_size=hc[0],num_layers=len(hc),dropout=0,loss=nn.MSELoss())
 
         elif args.model_type == "Seq2Seq":
             pixel = False

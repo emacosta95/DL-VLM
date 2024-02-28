@@ -147,15 +147,58 @@ import numpy as np
 
 
 data = np.load(
-    "data/dataset_h_eff/quench/dataset_quench_nbatch_10_batchsize_100_steps_1000_tf_30.0_l_8.npz"
+    "data/dataset_h_eff/periodic/dataset_periodic_nbatch_100_batchsize_1000_steps_100_tf_30.0_l_8_240226.npz"
 )
 
 
 
 z = data["z"]
+z=np.einsum('bti->bit',z)
 h_eff = data["h_eff"]
+h_eff=np.einsum('bti->bit',h_eff)
 h = data["h"]
+h=np.einsum('bti->bit',h)
 
+
+
+#%% check the distribution of values
+print(z.shape)
+
+plt.hist(z.reshape(-1),bins=200)
+plt.show()
+
+plt.hist(h_eff.reshape(-1),bins=200)
+plt.show()
+
+
+nan_indices = np.where(np.isnan(h_eff))[0]
+
+print(nan_indices)
+print(h_eff[2148])
+plt.plot(h_eff[2148])
+plt.show()
+
+#%% We remove the nan values
+h_eff_without_nan = h_eff[~np.isnan(h_eff).any(axis=(1,2))]
+
+z_without_nan=z[~np.isnan(h_eff).any(axis=(1,2))]
+
+h_without_nan=h[~np.isnan(h_eff).any(axis=(1,2))]
+
+
+
+print(h_eff_without_nan.shape)
+print(h_without_nan.shape)
+
+
+nan_indices = np.where(np.isnan(h_eff_without_nan))[0]
+
+print(nan_indices)
+
+
+np.savez('data/dataset_h_eff/train_dataset_periodic_driving_ndata_100000_steps_100_240226.npz',potential=h_eff_without_nan,h=h_without_nan,density=z_without_nan)
+
+#%% Fourier transform
 steps=z.shape[1]
 
 z_fft=np.fft.fft(z,axis=1,norm='forward')

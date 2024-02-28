@@ -71,7 +71,7 @@ min_range_driving = 0.01
 max_range_driving = 1.0
 max_shift = 1.0
 
-steps = 1000
+steps = 100
 tf = 30.0
 time = np.linspace(0.0, tf, steps)
 

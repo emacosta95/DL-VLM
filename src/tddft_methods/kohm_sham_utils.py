@@ -712,7 +712,7 @@ def nonlinear_schrodinger_step_zzx_model_full_effective_field(
 
     df_dz = get_effective_field(z=full_z, model=model, i=-1)
 
-    h_eff = h[i]  # + df_dz)
+    h_eff = h[i]   + df_dz
 
     omega_eff = torch.ones_like(h_eff)
     hamiltonian = build_hamiltonian(field_x=omega_eff, field_z=h_eff)
@@ -747,7 +747,7 @@ def nonlinear_schrodinger_step_zzx_model_full_effective_field(
         # full_z_plus_proj = z_dataset_projection(z=full_z_plus, dataset=dataset)
 
         df_dz = get_effective_field(z=full_z_plus, model=model, i=-1)
-        h_eff = 0.5 * (h[i + 1])  # + df_dz)
+        h_eff = 0.5 * (h[i + 1] + df_dz)
 
         hamiltonian_plus = build_hamiltonian(field_x=omega_eff, field_z=h_eff)
 

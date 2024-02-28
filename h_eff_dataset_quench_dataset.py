@@ -75,7 +75,7 @@ range_h=np.linspace(0.6,1.,nbatch)
 #max_h = 1.0 + np.linspace(0.1, 1., nbatch)
 #min_h = np.linspace(0.1, 1., nbatch)
 
-steps = 1000
+steps = 100
 tf = 30.0
 time = np.linspace(0.0, tf, steps)
 
@@ -192,7 +192,7 @@ for idx_batch in trange(0, nbatch):
             )
             current_derivative_tot[(batch_size * ( idx_batch) + idx)]=current_derivative
         np.savez(
-            f"data/dataset_h_eff/periodic/dataset_periodic_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240220",
+            f"data/dataset_h_eff/periodic/dataset_periodic_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240226",
             current=current_qutip_tot,
             z=z_qutip_tot,
             h_eff=h_eff_tot,
@@ -202,7 +202,7 @@ for idx_batch in trange(0, nbatch):
         )
 
 np.savez(
-    f"data/dataset_h_eff/periodic/dataset_periodic_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240220",
+    f"data/dataset_h_eff/periodic/dataset_periodic_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240226",
     current=current_qutip_tot,
     z=z_qutip_tot,
     h_eff=h_eff_tot,

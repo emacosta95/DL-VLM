@@ -86,7 +86,7 @@ class Driving:
 l = 8
 
 model = torch.load(
-    "model_rep/kohm_sham/cnn_density2field/model_density2field_periodic_time_interval_300_240216_periodic_dataset_[80, 80, 80, 80, 80, 80]_hc_[5, 25]_ks_1_ps_6_nconv_1_nblock",
+    "model_rep/kohm_sham/cnn_density2field/model_density2field_t_interval_500_240211_quench_dataset_[80, 80, 80, 80, 80, 80]_hc_[3, 9]_ks_1_ps_6_nconv_1_nblock",
     map_location="cpu",
 )
 model.eval()
@@ -94,7 +94,7 @@ model = model.to(dtype=torch.double)
 
 # dataset for the driving
 data = np.load(
-    "data/dataset_h_eff/periodic/dataset_periodic_nbatch_100_batchsize_1000_steps_1000_tf_30.0_l_8.npz"
+    "data/dataset_h_eff/quench/dataset_quench_nbatch_10_batchsize_100_steps_1000_tf_30.0_l_8.npz"
 )
 
 h_tot = data["h"][300:400]
@@ -126,7 +126,7 @@ print(dt)
 z_qutip_tot = np.zeros((nbatch, steps, l))
 z_tot = np.zeros_like(z_qutip_tot)
 h_eff_tot = np.zeros_like(z_qutip_tot)
-
+h_eff_tot_exact=np.zeros_like(z_qutip_tot)
 
 current_qutip_tot = np.zeros_like(z_qutip_tot)
 current_derivative_tot = np.zeros_like(z_qutip_tot)
@@ -155,7 +155,7 @@ time_stop = 500
 
 # %% Compute the initial ground state configuration
 
-
+print('ITS OK!')
 for q in range(nbatch):
     # Qutip Dynamics
     # Hamiltonian
@@ -204,6 +204,7 @@ for q in range(nbatch):
     heff_1stversion = torch.zeros_like(torch.tensor(z_exp))
 
     z_vector = torch.tensor(z_exp[0]).unsqueeze(0)
+    
     for i in trange(time_stop):
 
         if i == 0:
@@ -248,7 +249,7 @@ for q in range(nbatch):
                 psi=psi,
                 model=model,
                 i=i,
-                h=torch.tensor(h[:time_stop]) + heff,
+                h=torch.tensor(h[:time_stop]) ,
                 full_z=z_evolution,  # full z in size x time
                 self_consistent_step=self_consistent_step,
                 dt=dt,
@@ -258,76 +259,76 @@ for q in range(nbatch):
         )
         h_eff[i] = df
 
-        # z_qutip_tot[q, i, :] = z_exp[i]
-        # z_tot[q, i, :] = z_evolution.detach().numpy()
-        # h_eff_tot[q, i, :] = h_eff
-        # h_tot[q, i, :] = h[i]
-        # h_eff_tot_exact[q, i, :] = h_eff_exact[i, :]
+        z_qutip_tot[q, i, :] = z_exp[i]
+        z_tot[q, i, :] = z_evolution.detach().numpy()
+        h_eff_tot[q, i, :] = h_eff
+        h_tot[q, i, :] = h[i]
+        h_eff_tot_exact[q, i, :] = h_eff_exact[i, :]
 
-        # np.savez(
-        #     f"data/kohm_sham_approach/results/true_tddft/test",
-        #     z_qutip=z_qutip_tot[:, :i],
-        #     z=z_tot[:, :i],
-        #     potential=h_tot[:, :i],
-        #     h_eff=h_eff_tot[:, :i],
-        #     h_eff_exact=h_eff_tot_exact[:, :i],
-        #     time=time[:i],
-    for j in range(l):
-        plt.figure(figsize=(10, 10))
-        plt.title(f"site={j}", fontsize=40)
-        plt.plot(time[:time_stop], z_exp[:time_stop, j], label="exact")
-        plt.plot(
-            time[:time_stop],
-            z_evolution[:time_stop, j],
-            color="red",
-            linestyle="--",
-            linewidth=5,
-            label="from reconstruction",
-        )
-        plt.legend(fontsize=40)
-        plt.xlabel(r"$t[1/J]$", fontsize=40)
-        plt.ylabel(r"$z_i(t)$", fontsize=40)
-        plt.tick_params(
-            which="both",
-            left=True,
-            right=True,
-            labelleft=True,
-            labelright=True,
-            direction="inout",
-            length=5,
-            colors="black",
-            labelsize=40,
-        )
-        plt.show()
-    for j in range(l):
-        plt.figure(figsize=(10, 10))
-        plt.title(f"site={j}", fontsize=40)
-        plt.plot(time[:time_stop], heff.numpy()[:time_stop, j], label="reconstructed")
-        plt.plot(
-            time[:time_stop],
-            h_eff_exact[:time_stop, j],
-            label="exact",
-            linewidth=5,
-            linestyle="--",
-        )
-        plt.plot(time[:time_stop], h_eff[:time_stop, j], label="TDDFT", linewidth=5)
-        plt.legend(fontsize=40)
-        plt.xlabel(r"$t[1/J]$", fontsize=40)
-        plt.ylabel(r"$z_i(t)$", fontsize=40)
-        plt.tick_params(
-            which="both",
-            left=True,
-            right=True,
-            labelleft=True,
-            labelright=True,
-            direction="inout",
-            length=5,
-            width=3,
-            colors="black",
-            labelsize=40,
-        )
+        np.savez(
+            f"data/tddft_results/test",
+            z_qutip=z_qutip_tot[:, :i],
+            z=z_tot[:, :i],
+            potential=h_tot[:, :i],
+            h_eff=h_eff_tot[:, :i],
+            h_eff_exact=h_eff_tot_exact[:, :i],
+            time=time[:i],)
+    # for j in range(l):
+    #     plt.figure(figsize=(10, 10))
+    #     plt.title(f"site={j}", fontsize=40)
+    #     plt.plot(time[:time_stop], z_exp[:time_stop, j], label="exact")
+    #     plt.plot(
+    #         time[:time_stop],
+    #         z_evolution[:time_stop, j],
+    #         color="red",
+    #         linestyle="--",
+    #         linewidth=5,
+    #         label="from reconstruction",
+    #     )
+    #     plt.legend(fontsize=40)
+    #     plt.xlabel(r"$t[1/J]$", fontsize=40)
+    #     plt.ylabel(r"$z_i(t)$", fontsize=40)
+    #     plt.tick_params(
+    #         which="both",
+    #         left=True,
+    #         right=True,
+    #         labelleft=True,
+    #         labelright=True,
+    #         direction="inout",
+    #         length=5,
+    #         colors="black",
+    #         labelsize=40,
+    #     )
+    #     plt.show()
+    # for j in range(l):
+    #     plt.figure(figsize=(10, 10))
+    #     plt.title(f"site={j}", fontsize=40)
+    #     plt.plot(time[:time_stop], heff.numpy()[:time_stop, j], label="reconstructed")
+    #     plt.plot(
+    #         time[:time_stop],
+    #         h_eff_exact[:time_stop, j],
+    #         label="exact",
+    #         linewidth=5,
+    #         linestyle="--",
+    #     )
+    #     plt.plot(time[:time_stop], h_eff[:time_stop, j], label="TDDFT", linewidth=5)
+    #     plt.legend(fontsize=40)
+    #     plt.xlabel(r"$t[1/J]$", fontsize=40)
+    #     plt.ylabel(r"$z_i(t)$", fontsize=40)
+    #     plt.tick_params(
+    #         which="both",
+    #         left=True,
+    #         right=True,
+    #         labelleft=True,
+    #         labelright=True,
+    #         direction="inout",
+    #         length=5,
+    #         width=3,
+    #         colors="black",
+    #         labelsize=40,
+    #     )
 
-        plt.show()
+    #     plt.show()
 
 # %%
 smooth_heff = (heff + torch.roll(heff, shifts=1, dims=0)) / 2

@@ -151,7 +151,7 @@ class TDDFTCNNNoMemory(nn.Module):
         self.load_state_dict(data["model_state_dict"])
 
 
-class Causal_REDENT2D(nn.Module):
+class REDENT2D(nn.Module):
     def __init__(
         self,
         n_conv_layers: int = None,
@@ -205,12 +205,13 @@ class Causal_REDENT2D(nn.Module):
                     block = nn.Sequential()
                     block.add_module(
                         f"conv{i+1}",
-                        CausalConv2d(
+                        nn.Conv2d(
                             dilation=1,
                             stride=1,
                             in_channels=in_channels,
                             out_channels=hidden_channels[i],
                             kernel_size=ks,
+                            padding=padding
                         ),
                     )
                     block.add_module(
@@ -220,12 +221,13 @@ class Causal_REDENT2D(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            CausalConv2d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[i],
                                 out_channels=self.hidden_channels[i],
                                 kernel_size=ks,
+                                padding=padding
                             ),
                         )
                         block.add_module(
@@ -240,12 +242,13 @@ class Causal_REDENT2D(nn.Module):
                     block = nn.Sequential()
                     block.add_module(
                         f"conv{i+1}",
-                        CausalConv2d(
+                        nn.Conv2d(
                             dilation=1,
                             stride=1,
                             in_channels=hidden_channels[i - 1],
                             out_channels=hidden_channels[i],
                             kernel_size=ks,
+                            padding=padding
                         ),
                     )
                     # block.add_module(
@@ -255,12 +258,13 @@ class Causal_REDENT2D(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            CausalConv2d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[i],
                                 out_channels=self.hidden_channels[i],
                                 kernel_size=ks,
+                                padding=padding
                             ),
                         )
                         # block.add_module(
@@ -275,12 +279,13 @@ class Causal_REDENT2D(nn.Module):
 
                     block.add_module(
                         f"conv{i+1}",
-                        CausalConv2d(
+                        nn.Conv2d(
                             dilation=1,
                             stride=1,
                             in_channels=hidden_channels[i - 1],
                             out_channels=hidden_channels[i],
                             kernel_size=ks,
+                            padding=padding
                         ),
                     )
                     # block.add_module(
@@ -291,12 +296,13 @@ class Causal_REDENT2D(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            CausalConv2d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[i],
                                 out_channels=self.hidden_channels[i],
                                 kernel_size=ks,
+                                padding=padding
                             ),
                         )
                         block.add_module(
@@ -376,7 +382,7 @@ class Causal_REDENT2D(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            CausalConv2d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[
@@ -386,6 +392,7 @@ class Causal_REDENT2D(nn.Module):
                                     n_conv_layers - 1 - (i + 1)
                                 ],
                                 kernel_size=ks,
+                                padding=padding
                             ),
                         )
                         block.add_module(
@@ -401,7 +408,7 @@ class Causal_REDENT2D(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            CausalConv2d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[
@@ -411,6 +418,7 @@ class Causal_REDENT2D(nn.Module):
                                     n_conv_layers - 1 - (i)
                                 ],
                                 kernel_size=ks,
+                                padding=padding
                             ),
                         )
                         # block.add_module(
@@ -948,7 +956,6 @@ class REDENTnopooling(nn.Module):
         self.load_state_dict(data["model_state_dict"])
 
 
-# %%
 class LSTMTDDFT(nn.Module):
     def __init__(
         self,
@@ -964,7 +971,8 @@ class LSTMTDDFT(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_layers,
             dropout=dropout,
-            proj_size=1,
+            batch_first=True,
+            proj_size=input_size
         )
 
         self.loss = loss

@@ -250,3 +250,60 @@ for q in range(1):
         plt.show()
 
 # %%
+import numpy as np
+data=np.load('data/dataset_h_eff/periodic/dataset_periodic_nbatch_100_batchsize_1000_steps_100_tf_30.0_l_8_240226.npz')
+
+density=data['z']
+print('density shape=',density.shape)
+density=np.einsum('bti->bit',density)
+
+
+potential=data['h_eff']
+potential=np.einsum('bti->bit',potential)
+
+h=data['h']
+h=np.einsum('bti->bit',h)
+
+
+print(density.shape)
+np.savez('data/dataset_h_eff/train_dataset_periodic_driving_ndata_100000_steps_100_240226.npz',potential=potential,density=density,h=h)
+
+
+# %%
+import numpy as np
+data=np.load('data/dataset_h_eff/reconstruction_dataset/reconstruction_dataset_quench_nbatch_10_batchsize_100_steps_1000_tf_30.0_l_8.npz')
+
+z=data['z']
+
+z_exact=data['z_exact']
+
+h=data['h']
+
+h_eff=data['h_eff']
+
+h_eff_exact=data['h_eff_exact']
+
+h_eff_reconstruction=data['h_eff_reconstruction']
+
+print(h_eff.shape)
+#%%
+import matplotlib.pyplot as plt
+idx=0
+
+for i in range(h.shape[-1]):
+    plt.plot(h_eff[idx,:-1,i])
+    plt.plot(h_eff_exact[idx,:,i])
+    plt.plot(h_eff_reconstruction[idx,:,i],label='h_eff recon')
+    plt.legend()
+    plt.show()
+
+
+# %%
+for i in range(h.shape[-1]):
+    plt.plot(z[idx,:,i])
+    plt.plot(z_exact[idx,:,i])
+
+    plt.legend()
+    plt.show()
+
+# %%

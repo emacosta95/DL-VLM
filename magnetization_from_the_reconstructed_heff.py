@@ -53,30 +53,30 @@ class Driving:
 l = 8
 
 model = torch.load(
-    "model_rep/kohm_sham/model_current_t_interval_500_240202_[40, 40, 40, 40, 40, 40]_hc_[3, 5]_ks_1_ps_6_nconv_1_nblock",
+    "model_rep/kohm_sham/cnn_density2field/model_density2field_t_interval_500_240211_quench_dataset_[80, 80, 80, 80, 80, 80]_hc_[3, 9]_ks_1_ps_6_nconv_1_nblock",
     map_location="cpu",
 )
 model.eval()
 model = model.to(dtype=torch.double)
 
 # dataset for the driving
-data_file_name = "dataset_max_shift_0.6_nbatch_100_batchsize_100_steps_1000_tf_30.0.npz"
+data_file_name = "dataset_quench_nbatch_10_batchsize_100_steps_1000_tf_30.0_l_8.npz"
 
-data = np.load("data/dataset_h_eff/" + data_file_name)
+data = np.load("data/dataset_h_eff/quench/" + data_file_name)
 
-h_tot = data["h"][:, 1:]
-z_exact = data["z"][:, 1:]
-h_eff_exact = data["h_eff"][:, 1:]
+h_tot = data["h"][:, :]
+z_exact = data["z"][:, :]
+h_eff_exact = data["h_eff"][:, :]
 print(h_tot[0])
 print(h_tot.shape)
 print("z_exact_shape=", z_exact.shape)
 # initialization
 exponent_algorithm = True
 self_consistent_step = 0
-nbatch = 10
-batch_size = 100
+nbatch = 1
+batch_size = 2
 
-steps = 999
+steps = 1000
 tf = 30.0
 time = np.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
