@@ -42,7 +42,7 @@ class Driving:
 index_level = -1
 
 model = torch.load(
-    "model_rep/kohm_sham/cnn_field2field/model_field2field_periodic_time_interval_300_240218_periodic_dataset_[80, 80, 80, 80, 80, 80]_hc_[5, 25]_ks_1_ps_6_nconv_1_nblock",
+    "model_rep/kohm_sham/cnn_field2field/TDDFTCNN_field2field_periodic_time_steps_100_tf_30_240227_periodic_dataset_[80, 80, 80, 80]_hc_[5, 15]_ks_1_ps_4_nconv_1_nblock",
     map_location="cpu",
 )
 
@@ -50,14 +50,14 @@ model.eval()
 
 
 data = np.load(
-    "data/dataset_h_eff/periodic/dataset_periodic_nbatch_100_batchsize_1000_steps_1000_tf_30.0_l_8.npz"
+    "data/dataset_h_eff/periodic/dataset_periodic_nbatch_10_batchsize_500_steps_200_tf_20.0_l_8_240227.npz"
 )
 
 h = data["h"]
 
 l=h.shape[-1]
-steps = 1000
-tf = 30.0
+steps = 200
+tf = 20.0
 time = np.linspace(0.0, tf, steps)
 dt = time[1] - time[0]
 gamma=1.
@@ -288,7 +288,7 @@ h_eff_reconstruction=data['h_eff_reconstruction']
 print(h_eff.shape)
 #%%
 import matplotlib.pyplot as plt
-idx=0
+idx=1
 
 for i in range(h.shape[-1]):
     plt.plot(h_eff[idx,:-1,i])

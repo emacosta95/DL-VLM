@@ -75,8 +75,8 @@ range_h=np.linspace(0.6,1.,nbatch)
 #max_h = 1.0 + np.linspace(0.1, 1., nbatch)
 #min_h = np.linspace(0.1, 1., nbatch)
 
-steps = 100
-tf = 30.0
+steps = 200
+tf = 20.0
 time = np.linspace(0.0, tf, steps)
 
 #z_qutip_tot = np.zeros((nbatch * nbatch * batch_size, steps, l))
@@ -116,6 +116,8 @@ for idx_batch in trange(0, nbatch):
         
 
         for idx in trange(0, batch_size):
+            
+            rate=np.random.uniform(0.3,1.)
 
             #random_int = np.random.randint(len(rates))
             #rate = rates[random_int]
@@ -172,17 +174,8 @@ for idx_batch in trange(0, nbatch):
             x_sp = np.sqrt(1 - z_exp**2) * np.cos(
                 np.arcsin(-1 * (current_exp) / (2 * np.sqrt(1 - z_exp**2)+10**-4))
             )
-            h_eff = (0.25 * current_derivative + z_exp) / (x_sp + 10**-4) - h
+            h_eff = (0.25 * current_derivative + z_exp) / (x_sp + 10**-4) 
 
-            # z_qutip_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = z_exp
-            # current_qutip_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = (
-            #     current_exp
-            # )
-            # current_derivative_tot[
-            #     (batch_size * (jdx_batch + nbatch * idx_batch) + idx)
-            # ] = current_derivative
-            # h_eff_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = h_eff
-            # h_tot[(batch_size * (jdx_batch + nbatch * idx_batch) + idx)] = h
             
             h_eff_tot[(batch_size*(idx_batch) + idx)] = h_eff
             h_tot[(batch_size*(idx_batch) + idx)] = h
@@ -192,7 +185,7 @@ for idx_batch in trange(0, nbatch):
             )
             current_derivative_tot[(batch_size * ( idx_batch) + idx)]=current_derivative
         np.savez(
-            f"data/dataset_h_eff/periodic/dataset_periodic_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240226",
+            f"data/dataset_h_eff/periodic/dataset_periodic_random_rate_0-1_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240229",
             current=current_qutip_tot,
             z=z_qutip_tot,
             h_eff=h_eff_tot,
@@ -202,11 +195,11 @@ for idx_batch in trange(0, nbatch):
         )
 
 np.savez(
-    f"data/dataset_h_eff/periodic/dataset_periodic_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240226",
-    current=current_qutip_tot,
-    z=z_qutip_tot,
-    h_eff=h_eff_tot,
-    current_derivative=current_derivative_tot,
-    h=h_tot,
-    time=time
-)
+            f"data/dataset_h_eff/periodic/dataset_periodic_random_rate_0-1_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240229",
+            current=current_qutip_tot,
+            z=z_qutip_tot,
+            h_eff=h_eff_tot,
+            current_derivative=current_derivative_tot,
+            h=h_tot,
+            time=time
+        )

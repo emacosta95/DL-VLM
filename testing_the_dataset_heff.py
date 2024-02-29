@@ -4,7 +4,7 @@ import numpy as np
 
 
 data = np.load(
-    "data/dataset_h_eff/periodic/dataset_periodic_nbatch_2_batchsize_10_steps_1000_tf_30.0_l_8.npz"
+    "data/dataset_h_eff/periodic/dataset_periodic_random_rate_JUSTEFFECTIVEFIELD_nbatch_100_batchsize_1000_steps_200_tf_20.0_l_8_240227.npz"
 )
 
 
@@ -147,7 +147,7 @@ import numpy as np
 
 
 data = np.load(
-    "data/dataset_h_eff/periodic/dataset_periodic_nbatch_100_batchsize_1000_steps_100_tf_30.0_l_8_240226.npz"
+    "data/dataset_h_eff/periodic/dataset_periodic_random_rate_JUSTEFFECTIVEFIELD_nbatch_100_batchsize_1000_steps_200_tf_20.0_l_8_240227.npz"
 )
 
 
@@ -170,6 +170,8 @@ plt.show()
 plt.hist(h_eff.reshape(-1),bins=200)
 plt.show()
 
+plt.hist(h.reshape(-1),bins=200)
+plt.show()
 
 nan_indices = np.where(np.isnan(h_eff))[0]
 
@@ -177,6 +179,22 @@ print(nan_indices)
 print(h_eff[2148])
 plt.plot(h_eff[2148])
 plt.show()
+
+#%% random samples
+idx=np.random.randint(0,h_eff.shape[0])
+for i in range(h_eff.shape[1]):
+    plt.plot(h_eff[idx,i])
+plt.show()
+
+for i in range(h_eff.shape[1]):
+    plt.plot(z[idx,i])
+plt.show()
+    
+for i in range(h_eff.shape[1]):
+    plt.plot(h[idx,i])
+plt.show()
+
+
 
 #%% We remove the nan values
 h_eff_without_nan = h_eff[~np.isnan(h_eff).any(axis=(1,2))]
@@ -196,29 +214,57 @@ nan_indices = np.where(np.isnan(h_eff_without_nan))[0]
 print(nan_indices)
 
 
-np.savez('data/dataset_h_eff/train_dataset_periodic_driving_ndata_100000_steps_100_240226.npz',potential=h_eff_without_nan,h=h_without_nan,density=z_without_nan)
+np.savez('data/dataset_h_eff/train_dataset_periodic_driving_ndata_5000_steps_200_240226.npz',potential=h_eff_without_nan,h=h_without_nan,density=z_without_nan)
+
+
+#%% we train the puntual neural network
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+data = np.load(
+    "data/dataset_h_eff/periodic/dataset_periodic_random_rate_JUSTEFFECTIVEFIELD_nbatch_100_batchsize_1000_steps_200_tf_20.0_l_8_240227.npz"
+)
+
+
+
+z = data["z"]
+h_eff = data["h_eff"]
+h = data["h"]
+
+# z=z.reshape(-1,z.shape[-1])
+
+# h_eff=h_eff.reshape(-1,z.shape[-1])
+
+# h=h.reshape(-1,z.shape[-1])
+
+# p=np.random.permutation(h.shape[0])
+
+# np.savez(f'data/dataset_h_eff/train_puntual_mapping_ndata_{h.shape[0]}',density=z[p],h=h[p],potential=h_eff[p])
+
+
 
 #%% Fourier transform
 steps=z.shape[1]
 
-z_fft=np.fft.fft(z,axis=1,norm='forward')
-h_fft=np.fft.fft(h,axis=1,norm='forward')
-h_eff_fft=np.fft.fft(h_eff,axis=1,norm='forward')
+z_fft=np.fft.fft(z_without_nan,axis=1,norm='forward')
+h_fft=np.fft.fft(h_without_nan,axis=1,norm='forward')
+h_eff_fft=np.fft.fft(h_eff_without_nan,axis=1,norm='forward')
 
-h_fourier=np.zeros((h.shape[0],2,h.shape[1],h.shape[-1]))
+h_fourier=np.zeros((z_fft.shape[0],2,z_fft.shape[1],z_fft.shape[-1]))
 h_fourier[:,0]=np.real(h_fft)
 h_fourier[:,1]=np.imag(h_fft)
 
 
-h_eff_fourier=np.zeros((h.shape[0],2,h.shape[1],h.shape[-1]))
+h_eff_fourier=np.zeros((z_fft.shape[0],2,z_fft.shape[1],z_fft.shape[-1]))
 h_eff_fourier[:,0]=np.real(h_eff_fft)
 h_eff_fourier[:,1]=np.imag(h_eff_fft)
 
-z_fourier=np.zeros((h.shape[0],2,h.shape[1],h.shape[-1]))
+z_fourier=np.zeros((h_eff_without_nan.shape[0],2,h_eff_without_nan.shape[1],h_eff_without_nan.shape[-1]))
 z_fourier[:,0]=np.real(z_fft)
 z_fourier[:,1]=np.imag(z_fft)
 
-np.savez('data/dataset_h_eff/quench/fourier_transform/dataset_quench_fourier_nbatch_10_batchsize_100_steps_1000_tf_30.0_l_8.npz',density=z_fourier[:,:steps//2],h=h_fourier[:,:steps//2],potential=h_eff_fourier[:,:steps//2])
+np.savez('data/dataset_h_eff/periodic/fourier_transform/dataset_periodic_fourier_random_rate_JUSTEFFECTIVEFIELD_nbatch_100_batchsize_1000_steps_200_tf_20.0_l_8_240227.npz',density=z_fourier[:,:],h=h_fourier[:,:],potential=h_eff_fourier[:,:])
 
 
 # %%

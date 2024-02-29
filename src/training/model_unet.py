@@ -311,7 +311,8 @@ class REDENTnopooling2D(nn.Module):
 
     def forward(self, x: torch.tensor) -> torch.tensor:
         outputs = []
-        x=x.unsqueeze(1)
+        if x.shape[1]!=2:
+            x=x.unsqueeze(1)
         for block in self.conv_downsample:
             # print(x.shape)
             x = block(x)
@@ -325,10 +326,19 @@ class REDENTnopooling2D(nn.Module):
                 x = x + outputs[self.n_conv_layers - 1 - i]
                 x = block(x)
         # x = torch.sigmoid(x)  # we want to prove the Cross Entropy
-        x=x.squeeze(1)
+        if x.shape[1]!=2:
+            x=x.squeeze(1)
         return x
 
     def train_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+    
+    def valid_step(self, batch: Tuple, device: str):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)

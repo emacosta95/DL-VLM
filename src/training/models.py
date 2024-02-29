@@ -59,9 +59,11 @@ class TDDFTCNNNoMemory(nn.Module):
         self.pooling_size = pooling_size
 
     def forward(self, x: torch.tensor) -> torch.tensor:
-        x = x.unsqueeze(1)
+        if x.shape[1]!=2:
+            x = x.unsqueeze(1)
         x = self.CNNBlock(x)
-        x.squeeze(1)
+        if x.shape[1]!=2:
+            x.squeeze(1)
         return x
 
     def train_step(self, batch: Tuple, device: str):
@@ -886,6 +888,14 @@ class REDENTnopooling(nn.Module):
         return x.mean(-1)
 
     def train_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x).squeeze()
+        loss = self.loss(x, y)
+        return loss
+
+    def valid_step(self, batch: Tuple, device: str):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)

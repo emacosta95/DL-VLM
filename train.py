@@ -6,7 +6,7 @@ import numpy as np
 import torch as pt
 import torch.nn as nn
 
-from src.training.models import TDDFTCNNNoMemory,  LSTMTDDFT
+from src.training.models import TDDFTCNNNoMemory,  LSTMTDDFT,REDENTnopooling
 from src.training.unet_recurrent import UnetLSTM_beta
 from src.training.model_unet import REDENTnopooling2D
 from src.training.train_module import fit
@@ -320,6 +320,23 @@ def main(args):
             
         elif args.model_type=='LSTM':
             model=LSTMTDDFT(input_size=input_size,hidden_size=hc[0],num_layers=len(hc),dropout=0,loss=nn.MSELoss())
+            
+        elif args.model_type=='REDENTnopooling':
+            model=model = REDENTnopooling(
+                Loss=nn.MSELoss(),
+                in_channels=input_channels,
+                Activation=nn.ReLU(),
+                hidden_channels=hc,
+                ks=kernel_size,
+                padding=padding,
+                padding_mode=padding_mode,
+                # pooling_size=pooling_size,
+                n_conv_layers=n_conv_layers,
+                out_features=output_size,
+                in_features=input_size,
+                out_channels=args.output_channels,
+                n_block_layers=1,
+            )
 
         elif args.model_type == "Seq2Seq":
             pixel = False

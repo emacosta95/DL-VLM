@@ -53,16 +53,16 @@ class Driving:
 l = 8
 
 model = torch.load(
-    "model_rep/kohm_sham/cnn_density2field/model_density2field_t_interval_500_240211_quench_dataset_[80, 80, 80, 80, 80, 80]_hc_[3, 9]_ks_1_ps_6_nconv_1_nblock",
+    "model_rep/kohm_sham/cnn_density2field/model_density2field_periodic_time_interval_500_240226_periodic_dataset_[80, 80, 80, 80, 80, 80]_hc_[5, 15]_ks_1_ps_6_nconv_1_nblock",
     map_location="cpu",
 )
 model.eval()
 model = model.to(dtype=torch.double)
 
 # dataset for the driving
-data_file_name = "dataset_quench_nbatch_10_batchsize_100_steps_1000_tf_30.0_l_8.npz"
+data_file_name = "dataset_periodic_nbatch_100_batchsize_1000_steps_1000_tf_30.0_l_8_240220.npz"
 
-data = np.load("data/dataset_h_eff/quench/" + data_file_name)
+data = np.load("data/dataset_h_eff/periodic/" + data_file_name)
 
 h_tot = data["h"][:, :]
 z_exact = data["z"][:, :]
@@ -73,7 +73,7 @@ print("z_exact_shape=", z_exact.shape)
 # initialization
 exponent_algorithm = True
 self_consistent_step = 0
-nbatch = 1
+nbatch =1
 batch_size = 2
 
 steps = 1000
@@ -102,6 +102,7 @@ for q in trange(nbatch):
     )
     heff = model(input).detach().squeeze()
     heff = torch.einsum("rit->rti", heff)
+    print('heff.shape',heff.shape)
     # initialize the evolution
 
     #  Kohm Sham step 1) Initialize the state from an initial magnetization
