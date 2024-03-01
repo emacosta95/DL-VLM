@@ -407,3 +407,79 @@ class REDENTnopooling2D(nn.Module):
             f"other information \n epochs={data['epoch']}, \n r_valid_value={data['r_valid']} and r_train_value={data['r_train']} on the dataset located in: {data['dataset_name']}"
         )
         self.load_state_dict(data["model_state_dict"])
+
+
+
+class AutoEncoder(nn.Module):
+    
+    def __init__(self, hidden_channels:List,input_size:int,output_size:int,kernel_size:int,pooling:int,padding_mode:str,input_channels:int,output_channels:int,Activation:nn.Module,n_dense_layers:int,hidden_neurons:int,Loss:nn.Module) -> None:
+        
+        super().__init__()
+        self.Encoder=nn.Sequential()
+        for i,hc in enumerate(hidden_channels):
+            #Convolutional layer
+            if i==0:
+                self.Encoder.add_module(f'conv_{i}',nn.Conv1d(kernel_size=kernel_size,in_channels=input_channels,out_channels=hidden_channels[i],padding=(kernel_size-1)//2,padding_mode=padding_mode))
+            else:
+                self.Encoder.add_module(f'conv_{i}',nn.Conv1d(kernel_size=kernel_size,in_channels=hidden_channels[i-1],out_channels=hidden_channels[i],padding=(kernel_size-1)//2,padding_mode=padding_mode))
+            
+            #Activation function
+            self.Encoder.add_module(f'act_{i}',Activation)
+            # Avg pooling
+            self.Encoder.add_module(f'avg_pooling_{i}',nn.AvgPool1d(kernel_size=2
+            ))
+            
+        self.Decoder=nn.Sequential()
+        for i,hc in enumerate(hidden_channels):
+            #Convolutional layer
+            if i==len(hidden_channels)-1:
+                self.Decoder.add_module(f'conv_{i}',nn.ConvTranspose1d(kernel_size=kernel_size+1,in_channels=hidden_channels[0],out_channels=output_channels,padding=(kernel_size-1)//2,stride=2,padding_mode='zeros'))
+            else:
+                self.Decoder.add_module(f'conv_{i}',nn.ConvTranspose1d(kernel_size=kernel_size+1,in_channels=hidden_channels[len(hidden_channels)-1-i],out_channels=hidden_channels[len(hidden_channels)-2-i],padding=(kernel_size-1)//2,stride=2,padding_mode='zeros'))
+            
+            if i!=len(hidden_channels)-1:
+                #Activation function
+                self.Decoder.add_module(f'act_{i}',Activation)
+            
+        # Central part of the Autoencoder
+        self.Dense=nn.Sequential()
+        for i in range(n_dense_layers):
+            if i==0:
+                self.Dense.add_module(f'dense_{i}',nn.Linear(hidden_channels[-1]*(input_size//2**len(hidden_channels)),hidden_neurons ))
+            
+            else:
+                self.Dense.add_module(f'dense_{i}',nn.Linear(hidden_neurons,hidden_neurons))
+            
+            if i==n_dense_layers-1:
+                self.Dense.add_module(f'dense_{i}',nn.Linear(hidden_neurons,hidden_channels[-1]*(input_size//2**len(hidden_channels))))
+                
+                
+        self.loss=Loss
+            
+    def forward(self,x:torch.tensor):
+        x=x.unsqueeze(1)
+        z_img=self.Encoder(x)
+        z=z_img.view(z_img.shape[0],-1)
+        z=self.Dense(z)
+        z_img=z.view(z_img.shape)
+        x_hat=self.Decoder(z_img)
+        x_hat=x_hat.squeeze(1)
+        return x_hat
+    
+    def train_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+    
+    def valid_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+                
+            

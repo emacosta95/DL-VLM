@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from src.training.models import TDDFTCNNNoMemory,  LSTMTDDFT,REDENTnopooling
 from src.training.unet_recurrent import UnetLSTM_beta
-from src.training.model_unet import REDENTnopooling2D
+from src.training.model_unet import REDENTnopooling2D,AutoEncoder
 from src.training.train_module import fit
 from src.training.seq2seq import Seq2Seq
 from src.training.utils import (
@@ -379,6 +379,9 @@ def main(args):
                 out_channels=input_channels,
                 lstm_layers=args.lstm_layers,
             )
+            
+        elif args.model_type=="AutoEncoder":
+            model=AutoEncoder(hidden_channels=hc,input_size=input_size,output_size=output_size,kernel_size=kernel_size[0],pooling=2,padding_mode='circular',input_channels=input_channels,output_channels=input_channels,Activation=nn.ReLU(),n_dense_layers=6,hidden_neurons=200,Loss=nn.MSELoss())
 
     model = model.to(pt.double)
     model = model.to(device=device)
