@@ -326,9 +326,10 @@ class REDENT2D(nn.Module):
                             stride=(2, 1),
                             in_channels=hidden_channels[n_conv_layers - 1 - i],
                             out_channels=hidden_channels[n_conv_layers - 1 - (i + 1)],
-                            kernel_size=[ks[0] + 1, ks[1]],
-                            padding=padding,
+                            kernel_size=[ks[0] , ks[1]],
+                            padding=[(ks[0]-1)//2 , (ks[1]-1)//2],
                             padding_mode="zeros",
+                            output_padding=(1,0)
                         ),
                     )
                     # block.add_module(
@@ -341,7 +342,7 @@ class REDENT2D(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.ConvTranspose2d(
+                            nn.Conv2d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[
@@ -351,14 +352,15 @@ class REDENT2D(nn.Module):
                                     n_conv_layers - 1 - (i + 1)
                                 ],
                                 kernel_size=ks,
+                                padding=padding
                             ),
                         )
-                        # block.add_module(
-                        #     f"batch_norm {i+1}_{j+1}",
-                        #     nn.BatchNorm2d(
-                        #         self.hidden_channels[n_conv_layers - 1 - (i + 1)]
-                        #     ),
-                        # )
+                        block.add_module(
+                            f"batch_norm {i+1}_{j+1}",
+                            nn.BatchNorm2d(
+                                self.hidden_channels[n_conv_layers - 1 - (i + 1)]
+                            ),
+                        )
                         block.add_module(f"activation_{i+1}_{j+1}", self.Activation)
                     self.conv_upsample.append(block)
                 elif (i > 0) and (i < n_conv_layers - 1):
@@ -369,9 +371,10 @@ class REDENT2D(nn.Module):
                             stride=(2, 1),
                             in_channels=hidden_channels[n_conv_layers - 1 - (i)],
                             out_channels=hidden_channels[n_conv_layers - 1 - (i + 1)],
-                            kernel_size=[ks[0] + 1, ks[1]],
-                            padding=padding,
+                            kernel_size=[ks[0], ks[1]],
+                            padding=[(ks[0]-1)//2 , (ks[1]-1)//2],
                             padding_mode="zeros",
+                            output_padding=(1,0)
                         ),
                     )
                     # block.add_module(
@@ -437,9 +440,10 @@ class REDENT2D(nn.Module):
                             stride=(2, 1),
                             in_channels=hidden_channels[0],
                             out_channels=self.in_channels,
-                            kernel_size=[ks[0] + 1, ks[1]],
-                            padding=padding,
+                            kernel_size=[ks[0] , ks[1]],
+                            padding=[(ks[0]-1)//2 , (ks[1]-1)//2],
                             padding_mode="zeros",
+                            output_padding=(1,0)
                         ),
                     )
                     # block.add_module(f"activation_final{i+1}", self.Activation)
@@ -457,7 +461,8 @@ class REDENT2D(nn.Module):
                     self.conv_upsample.append(block)
 
     def forward(self, x: torch.tensor) -> torch.tensor:
-        x = torch.unsqueeze(x, dim=1)
+        if x.shape[1]!=2:
+            x = torch.unsqueeze(x, dim=1)
         outputs = []
         for block in self.conv_downsample:
             x = block(x)
@@ -468,7 +473,8 @@ class REDENT2D(nn.Module):
             else:
                 x = x + outputs[self.n_conv_layers - 1 - i]
                 x = block(x)
-        x = torch.squeeze(x, dim=1)
+        if x.shape[1]!=2:
+            x = torch.squeeze(x, dim=1)
         # x = torch.sigmoid(x)  # we want to prove the Cross Entropy
         return x
 
@@ -476,7 +482,7 @@ class REDENT2D(nn.Module):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)
-        x = self.forward(x).squeeze(1)
+        x = self.forward(x)#.squeeze(1)
         loss = self.loss(x, y)
         return loss
 
@@ -484,7 +490,7 @@ class REDENT2D(nn.Module):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)
-        x = self.forward(x).squeeze(1)
+        x = self.forward(x)#.squeeze(1)
         loss = self.loss(x, y)
         return loss
 
@@ -492,7 +498,7 @@ class REDENT2D(nn.Module):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)
-        x = self.forward(x).squeeze(1)
+        x = self.forward(x)#.squeeze(1)
         loss = self.loss(x, y)
         return loss
 

@@ -482,4 +482,75 @@ class AutoEncoder(nn.Module):
         loss = self.loss(x, y)
         return loss
                 
+
+
+class DenseAutoEncoder(nn.Module):
+    
+    def __init__(self, hidden_channels:List,input_size:int,output_size:int,input_channels:int,output_channels:int,Activation:nn.Module,n_dense_layers:int,hidden_neurons:int,Loss:nn.Module) -> None:
+        
+        super().__init__()
+        self.Encoder=nn.Sequential()
+        for i,hc in enumerate(hidden_channels):
+            #Convolutional layer
+            if i==0:
+                self.Encoder.add_module(f'conv_{i}',nn.Linear(in_features=input_size[0]*input_size[1]*input_channels,out_features=hidden_channels[1]))
+            else:
+                self.Encoder.add_module(f'conv_{i}',nn.Linear(in_features=hidden_channels[i-1],out_features=hidden_channels[i]))
+            
+            #Activation function
+            self.Encoder.add_module(f'act_{i}',Activation)
+            
+        self.Decoder=nn.Sequential()
+        for i,hc in enumerate(hidden_channels):
+            #Convolutional layer
+            if i==len(hidden_channels)-1:
+                self.Decoder.add_module(f'conv_{i}',nn.Linear(in_features=hidden_channels[0],out_features=output_channels*output_size[0]*output_size[1]))
+            else:
+                self.Decoder.add_module(f'conv_{i}',nn.Linear(in_features=hidden_channels[len(hidden_channels)-1-i],out_features=hidden_channels[len(hidden_channels)-2-i]))
+            
+            if i!=len(hidden_channels)-1:
+                #Activation function
+                self.Decoder.add_module(f'act_{i}',Activation)
+            
+        # Central part of the Autoencoder
+        self.Dense=nn.Sequential()
+        for i in range(n_dense_layers):
+            if i==0:
+                self.Dense.add_module(f'dense_{i}',nn.Linear(hidden_channels[-1],hidden_neurons ))
+            
+            else:
+                self.Dense.add_module(f'dense_{i}',nn.Linear(hidden_neurons,hidden_neurons))
+            
+            if i==n_dense_layers-1:
+                self.Dense.add_module(f'dense_{i}',nn.Linear(hidden_neurons,hidden_channels[-1]))
+                
+                
+        self.loss=Loss
+            
+    def forward(self,x_input:torch.tensor):
+        x=x_input.view(x_input.shape[0],-1)
+        z_img=self.Encoder(x)
+        z=z_img.view(z_img.shape[0],-1)
+        z=self.Dense(z)
+        z_img=z.view(z_img.shape)
+        x_hat=self.Decoder(z_img)
+        x_hat=x_hat.view(x_input.shape)
+        return x_hat
+    
+    def train_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+    
+    def valid_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+                
             

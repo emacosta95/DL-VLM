@@ -62,154 +62,238 @@ class Driving:
 
 # hyperparameters
 
-nbatch = 100
-batch_size = 100
+nbatch = 10
+
+batch_size = 1000
 l = 8
-rate = 0.2
+#rates = [0.1, 0.5, 0.8, 1.0]
 
-min_range_driving = 0.01
-max_range_driving = 1.0
-max_shift = 1.0
+rate=1.0
+# j coupling
+j=-1
+# omega auxiliary field
+omega=1
+range_h=np.linspace(0.6,1.,nbatch)
 
-steps = 100
-tf = 30.0
+#max_h = 1.0 + np.linspace(0.1, 1., nbatch)
+#min_h = np.linspace(0.1, 1., nbatch)
+
+steps = 200
+tf = 20.0
 time = np.linspace(0.0, tf, steps)
 
-z_qutip_tot = np.zeros((nbatch * batch_size, steps, l))
+#z_qutip_tot = np.zeros((nbatch * nbatch * batch_size, steps, l))
+z_qutip_tot=np.zeros((nbatch  * batch_size, steps, l))
 z_big_tot = np.zeros_like(z_qutip_tot)
 h_eff_tot = np.zeros_like(z_qutip_tot)
+h_eff_observables_tot = np.zeros_like(z_qutip_tot)
 h_tot = np.zeros_like(z_qutip_tot)
 current_qutip_tot = np.zeros_like(z_qutip_tot)
 current_derivative_tot = np.zeros_like(z_qutip_tot)
+q_tot = np.zeros_like(z_qutip_tot)
+r_diag_tot = np.zeros_like(z_qutip_tot)
+r_diag_minus_tot = np.zeros_like(z_qutip_tot)
+r_diag_plus_tot=np.zeros_like(z_qutip_tot)
+x_sp_tot=np.zeros_like(z_qutip_tot)
 
 ham0 = SpinHamiltonian(
     direction_couplings=[("x", "x")],
     pbc=True,
-    coupling_values=[-1.0],
+    coupling_values=[j],
     size=l,
 )
 
 obs: List[qutip.Qobj] = []
 current_obs: List[qutip.Qobj] = []
+q_obs: List[qutip.Qobj]=[]
+r_diag_obs: List[qutip.Qobj]=[]
+r_diag_plus_obs: List[qutip.Qobj]=[]
+r_diag_minus_obs:List[qutip.Qobj]=[]
 for i in range(l):
     z_op = SpinOperator(index=[("z", i)], coupling=[1.0], size=l, verbose=1)
     # print(f"x[{i}]=", x.qutip_op, "\n")
     current = SpinOperator(
-        index=[("x", (i - 1) % l, "y", i), ("y", i, "x", (i + 1) % l)],
-        coupling=[-2, -2],
+        index=[("x", (i-1)%l, "y", i), ("y", i, "x", (i + 1) % l)],
+        coupling=[2*j, 2*j],
         size=l,
     )
+    q = SpinOperator(
+        index=[("x", (i - 1) % l, "z", i,"x",(i+1)%l)],
+        coupling=[2*j**2],
+        size=l,
+    )
+    r_diag=SpinOperator(
+        index=[("x", (i - 1) % l, "x", i), ("x", i, "x", (i + 1) % l)],
+        coupling=[j, j],
+        size=l,
+    )
+    r_diag_plus=SpinOperator(
+        index=[ ("y", i, "y", (i+1)%l)],
+        coupling=[-j, -j],
+        size=l,
+    )
+    r_diag_minus=SpinOperator(
+        index=[ ("y", (i-1)%l, "y", i )],
+        coupling=[-j, -j],
+        size=l,
+    )
+    
     obs.append(z_op.qutip_op)
     current_obs.append(current.qutip_op)
+    q_obs.append(q.qutip_op)
+    r_diag_obs.append(r_diag.qutip_op)
+    r_diag_minus_obs.append(r_diag_minus.qutip_op)
+    r_diag_plus_obs.append(r_diag_plus.qutip_op)
 
-shifts = np.linspace(0, max_shift, nbatch)
 for idx_batch in trange(0, nbatch):
-    for idx in trange(0, batch_size):
-        h = np.zeros((steps, l))
-        for i in range(l):
-            driving = generate_smooth_gaussian_noise(
-                time,
-                1 / rate,
-                tf,
-                mean=0,
-                sigma=0.5,
-                min_range=min_range_driving,
-                max_range=max_range_driving,
-                shift=shifts[idx_batch],
-            )
-            h[:, i] = driving
+    #for jdx_batch in trange(0, nbatch):
+        #hi = np.random.uniform(min_h[idx_batch], max_h[idx_batch], size=(batch_size, l))
+        #hf = np.random.uniform(min_h[jdx_batch], max_h[jdx_batch], size=(batch_size, l))
+        hi=np.random.uniform(range_h[idx_batch],range_h[idx_batch]+1.,size=(batch_size,l))
+        
+        
 
-        hamExtZ = SpinOperator(
-            index=[("z", i) for i in range(l)], coupling=h[0], size=l
-        )
+        for idx in trange(0, batch_size):
+            
+            rate=np.random.uniform(0.3,1.)
 
-        eng, psi0 = np.linalg.eigh(ham0.qutip_op + hamExtZ.qutip_op)
-        psi0 = qutip.Qobj(
-            psi0[:, 0], shape=psi0.shape, dims=([[2 for i in range(l)], [1]])
-        )
+            #random_int = np.random.randint(len(rates))
+            #rate = rates[random_int]
+            h=0.5*np.cos(time*rate)[:,None]+hi[idx,None,:]
+            #h = (
+            #    np.exp(-1 * rate * time)[:, None] * hi[idx, None, :]
+            #    + (1 - np.exp(-1 * rate * time)[:, None]) * hf[idx, None, :]
+            #)
 
-        print("real ground state energy=", eng[0])
-        # to check if we have the same outcome with the Crank-Nicholson algorithm
-        # psi = initialize_psi_from_z_and_x(z=-1 * zi[0], x=zi[1])
-        # psi = psi.detach().numpy()
-        # for i in range(l):
-        #     psi_l = qutip.Qobj(psi[i], shape=psi[i].shape, dims=([[2], [1]]))
-        #     if i == 0:
-        #         psi0 = psi_l
-        #     else:
-        #         psi0 = qutip.tensor(psi0, psi_l)
-        # compute and check the magnetizations
-
-        # build up the time dependent object for the qutip evolution
-        hamiltonian = [ham0.qutip_op]
-
-        for i in range(l):
-            drive_z = Driving(
-                h=h,
-                dt=time[1] - time[0],
-                idx=i,
+            hamExtZ = SpinOperator(
+                index=[("z", i) for i in range(l)], coupling=h[0], size=l
             )
 
-            hamiltonian.append([obs[i], drive_z.field])
+            eng, psi0 = np.linalg.eigh(ham0.qutip_op + hamExtZ.qutip_op)
+            psi0 = qutip.Qobj(
+                psi0[:, 0], shape=psi0.shape, dims=([[2 for i in range(l)], [1]])
+            )
 
-        # evolution and
+            print("real ground state energy=", eng[0])
+            # to check if we have the same outcome with the Crank-Nicholson algorithm
+            # psi = initialize_psi_from_z_and_x(z=-1 * zi[0], x=zi[1])
+            # psi = psi.detach().numpy()
+            # for i in range(l):
+            #     psi_l = qutip.Qobj(psi[i], shape=psi[i].shape, dims=([[2], [1]]))
+            #     if i == 0:
+            #         psi0 = psi_l
+            #     else:
+            #         psi0 = qutip.tensor(psi0, psi_l)
+            # compute and check the magnetizations
 
-        output = qutip.sesolve(hamiltonian, psi0, time, e_ops=obs + current_obs)
+            # build up the time dependent object for the qutip evolution
+            hamiltonian = [ham0.qutip_op]
 
-        current_exp = np.zeros((steps, l))
-        z_exp = np.zeros_like(current_exp)
-        for r in range(l):
-            z_exp[:, r] = output.expect[r]
-            current_exp[:, r] = output.expect[l + r]
+            for i in range(l):
+                drive_z = Driving(
+                    h=h,
+                    dt=time[1] - time[0],
+                    idx=i,
+                )
 
-        current_derivative = np.gradient(current_exp, time, axis=0)
-        x_sp = np.sqrt(1 - z_exp**2) * np.cos(
-            np.arcsin(-1 * (current_exp) / (2 * np.sqrt(1 - z_exp**2)))
+                hamiltonian.append([obs[i], drive_z.field])
+
+            # evolution and
+
+            output = qutip.sesolve(hamiltonian, psi0, time, e_ops=obs + current_obs+ q_obs + 
+                                   r_diag_obs+r_diag_minus_obs+r_diag_plus_obs)
+
+            current_exp = np.zeros((steps, l))
+            z_exp = np.zeros_like(current_exp)
+            r_diag_exp = np.zeros_like(current_exp)
+            r_diag_minus_exp=np.zeros_like(current_exp)
+            r_diag_plus_exp= np.zeros_like(current_exp)
+            for r in range(l):
+                z_exp[:, r] = output.expect[r]
+                current_exp[:, r] = output.expect[l + r]
+                r_diag_exp[:,r]=output.expect[3*l+r]
+                r_diag_minus_exp[:,r]=output.expect[4*l+r]
+                r_diag_plus_exp[:,r]=output.expect[5*l+r]
+                
+                
+
+            # Current derivative
+            current_derivative = np.gradient(current_exp, time, axis=0)
+
+            # R matrix
+            r_matrix_1=np.einsum('ij,tj->tij',np.eye(r_diag_exp.shape[-1]),r_diag_exp)
+            # +1 off diagonal term
+            r_matrix_2=np.einsum('ij,tj->tij',np.eye(r_diag_exp.shape[-1]),r_diag_plus_exp)
+            r_matrix_2=np.roll(r_matrix_2,axis=-1,shift=1)
+            #-1 off diagonal term
+            r_matrix_3=np.einsum('ij,tj->tij',np.eye(r_diag_exp.shape[-1]),r_diag_minus_exp)
+            r_matrix_3=np.roll(r_matrix_3,axis=-1,shift=-1)
+
+            #sum of all this term
+            r_matrix=r_matrix_3+r_matrix_2+r_matrix_1
+
+
+            #compute the effective field
+            x_sp = np.sqrt(1 - z_exp**2) * np.cos(
+                np.arcsin(-1 * (current_exp) /  (2 * np.sqrt(1 - z_exp**2) ) )
+            )
+
+            current_derivative = np.gradient(current_exp, time, axis=0)
+            h_eff = (0.25 * current_derivative + z_exp) / (x_sp+10**-4)
+
+
+            # build the operators that defines the derivative of the current
+            r_h=np.einsum('tji,ti->tj',r_matrix,h)#+np.einsum('tji,ti->ti',r_matrix,h))
+
+            q_effective=r_h-current_derivative/4 #factor 4 due to the commutation relations
+
+            # definition of the heff from observables
+            h_eff_from_observables=(z_exp+(r_h-q_effective))/(x_sp+10**-4)
+            
+            
+            # update the database
+            h_eff_tot[(batch_size*(idx_batch) + idx)] = h_eff
+            h_eff_observables_tot[(batch_size*(idx_batch) + idx)]=h_eff_from_observables
+            h_tot[(batch_size*(idx_batch) + idx)] = h
+            z_qutip_tot[(batch_size*(idx_batch) + idx)]=z_exp
+            current_qutip_tot[(batch_size*(idx_batch) + idx)] = (
+                current_exp
+            )
+            x_sp_tot[(batch_size*(idx_batch) + idx)]=x_sp
+            q_tot[(batch_size*(idx_batch) + idx)]=q_effective
+            r_diag_tot[(batch_size*(idx_batch) + idx)]=r_diag_exp
+            r_diag_plus_tot[(batch_size*(idx_batch) + idx)]=r_diag_plus_exp
+            r_diag_minus_tot[(batch_size*(idx_batch) + idx)]=r_diag_minus_exp
+            current_derivative_tot[(batch_size * ( idx_batch) + idx)]=current_derivative
+            
+        np.savez(
+            f"data/dataset_h_eff/periodic/dataset_periodic_random_rate_0-1_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240326",
+            current=current_qutip_tot,
+            z=z_qutip_tot,
+            h_eff=h_eff_tot,
+            current_derivative=current_derivative_tot,
+            h=h_tot,
+            x_sp=x_sp_tot,
+            q=q_tot,
+            r_diag=r_diag_tot,
+            r_diag_minus=r_diag_minus_tot,
+            r_diag_plus=r_diag_plus_tot,
+            h_eff_from_observables=h_eff_observables_tot,
+            time=time
         )
-        h_eff = (0.25 * current_derivative + z_exp) / (x_sp + 10**-4)
-
-        memory_rate = 1
-
-        z_big = np.zeros((steps, l))
-        h_eff_data = np.zeros((steps, l))
-
-        count = 0
-        for i in range(0, len(time)):
-            t = time[i]
-            if i == 0:
-                z_big[count] = z_exp[i]
-            else:
-                weight = np.exp(-memory_rate * (t - time[:i]))
-                z_big[count] = np.average(
-                    weight[:, None] * z_exp[:i], axis=0
-                ) / np.average(weight)
-                h_eff_data[count, :] = h_eff[i] - h[i]
-
-            count += 1
-
-        z_qutip_tot[(batch_size * (idx_batch) + idx)] = z_exp
-        current_qutip_tot[(batch_size * (idx_batch) + idx)] = current_exp
-        z_big_tot[(batch_size * (idx_batch) + idx)] = z_big
-        current_derivative_tot[(batch_size * (idx_batch) + idx)] = current_derivative
-
-        h_eff_tot[(batch_size * (idx_batch) + idx)] = h_eff_data
-        h_tot[(batch_size * (idx_batch) + idx)] = h
-    np.savez(
-        f"data/dataset_h_eff/dataset_max_shift_{max_shift}_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}",
-        current=current_qutip_tot,
-        z=z_qutip_tot,
-        h_eff=h_eff_tot,
-        z_big=z_big_tot,
-        current_derivative=current_derivative_tot,
-        h=h_tot,
-    )
 
 np.savez(
-    f"data/dataset_h_eff/dataset_max_shift_{max_shift}_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}",
-    current=current_qutip_tot,
-    z=z_qutip_tot,
-    h_eff=h_eff_tot,
-    z_big=z_big_tot,
-    current_derivative=current_derivative_tot,
-    h=h_tot,
-)
+            f"data/dataset_h_eff/periodic/dataset_periodic_random_rate_0-1_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240326",
+            current=current_qutip_tot,
+            z=z_qutip_tot,
+            h_eff=h_eff_tot,
+            current_derivative=current_derivative_tot,
+            h=h_tot,
+            x_sp=x_sp_tot,
+            q=q_tot,
+            r_diag=r_diag_tot,
+            r_diag_minus=r_diag_minus_tot,
+            r_diag_plus=r_diag_plus_tot,
+            h_eff_from_observables=h_eff_observables_tot,
+            time=time
+        )

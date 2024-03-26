@@ -6,9 +6,9 @@ import numpy as np
 import torch as pt
 import torch.nn as nn
 
-from src.training.models import TDDFTCNNNoMemory,  LSTMTDDFT,REDENTnopooling
+from src.training.models import TDDFTCNNNoMemory,  LSTMTDDFT,REDENT2D,REDENTnopooling
 from src.training.unet_recurrent import UnetLSTM_beta
-from src.training.model_unet import REDENTnopooling2D,AutoEncoder
+from src.training.model_unet import AutoEncoder,DenseAutoEncoder,REDENTnopooling2D
 from src.training.train_module import fit
 from src.training.seq2seq import Seq2Seq
 from src.training.utils import (
@@ -116,6 +116,7 @@ parser.add_argument(
 parser.add_argument(
     "--input_size",
     type=int,
+    nargs='+',
     help="number of features of the input (default=5)",
     default=5,
 )
@@ -301,8 +302,8 @@ def main(args):
         history_train = []
         history_best = []
 
-        if args.model_type == "REDENTnopooling2D":
-            model = REDENTnopooling2D(
+        if args.model_type == "REDENT2D":
+            model = REDENT2D(
                 Loss=nn.MSELoss(),
                 in_channels=input_channels,
                 Activation=nn.ReLU(),
@@ -380,8 +381,8 @@ def main(args):
                 lstm_layers=args.lstm_layers,
             )
             
-        elif args.model_type=="AutoEncoder":
-            model=AutoEncoder(hidden_channels=hc,input_size=input_size,output_size=output_size,kernel_size=kernel_size[0],pooling=2,padding_mode='circular',input_channels=input_channels,output_channels=input_channels,Activation=nn.ReLU(),n_dense_layers=6,hidden_neurons=200,Loss=nn.MSELoss())
+        elif args.model_type=="DenseAutoEncoder":
+            model=DenseAutoEncoder(hidden_channels=hc,input_size=input_size,output_size=output_size,input_channels=input_channels,output_channels=input_channels,Activation=nn.ReLU(),n_dense_layers=6,hidden_neurons=200,Loss=nn.MSELoss())
 
     model = model.to(pt.double)
     model = model.to(device=device)
@@ -397,7 +398,7 @@ def main(args):
         train_dl, valid_dl = make_data_loader_unet(
             file_name=file_name,
             bs=bs,
-            split=0.8,
+            split=0.95,
             keys=args.keys,
             time_interval=args.time_interval,
             preprocessing=args.preprocessing,
