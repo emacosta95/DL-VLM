@@ -455,6 +455,17 @@ class AutoEncoder(nn.Module):
                 
                 
         self.loss=Loss
+        
+    def _latent_sample(self, mu, logvar):
+        if self.training:
+            # the reparameterization trick
+            std = (logvar * 0.5).exp()
+            return torch.distributions.Normal(loc=mu, scale=std).rsample()
+            # std = logvar.mul(0.5).exp_()
+            # eps = torch.empty_like(std).normal_()
+            # return eps.mul(std).add_(mu)
+        else:
+            return mu
             
     def forward(self,x:torch.tensor):
         x=x.unsqueeze(1)
@@ -467,19 +478,21 @@ class AutoEncoder(nn.Module):
         return x_hat
     
     def train_step(self, batch: Tuple, device: str):
-        x, y = batch
-        x = x.to(device=device, dtype=torch.double)
-        y = y.to(device=device, dtype=torch.double)
-        x = self.forward(x)
-        loss = self.loss(x, y)
+        x = batch[0]
+        x = x.unsqueeze(1).to(device=device)
+        latent_mu, latent_logvar = self.Encoder(x)
+        latent = self._latent_sample(latent_mu, latent_logvar)
+        x_recon = self.Decoder(latent)
+        loss, kldiv = self.loss(x_recon, x, latent_mu, latent_logvar)
         return loss
     
     def valid_step(self, batch: Tuple, device: str):
-        x, y = batch
-        x = x.to(device=device, dtype=torch.double)
-        y = y.to(device=device, dtype=torch.double)
-        x = self.forward(x)
-        loss = self.loss(x, y)
+        x = batch[0]
+        x = x.unsqueeze(1).to(device=device)
+        latent_mu, latent_logvar = self.Encoder(x)
+        latent = self._latent_sample(latent_mu, latent_logvar)
+        x_recon = self.Decoder(latent)
+        loss, kldiv = self.loss(x_recon, x, latent_mu, latent_logvar)
         return loss
                 
 
@@ -528,6 +541,7 @@ class DenseAutoEncoder(nn.Module):
         self.loss=Loss
             
     def forward(self,x_input:torch.tensor):
+
         x=x_input.view(x_input.shape[0],-1)
         z_img=self.Encoder(x)
         z=z_img.view(z_img.shape[0],-1)

@@ -213,7 +213,8 @@ class REDENT2D(nn.Module):
                             in_channels=in_channels,
                             out_channels=hidden_channels[i],
                             kernel_size=ks,
-                            padding=padding
+                            padding=padding,
+                            padding_mode=padding_mode
                         ),
                     )
                     block.add_module(
@@ -229,7 +230,8 @@ class REDENT2D(nn.Module):
                                 in_channels=self.hidden_channels[i],
                                 out_channels=self.hidden_channels[i],
                                 kernel_size=ks,
-                                padding=padding
+                                padding=padding,
+                                padding_mode=padding_mode
                             ),
                         )
                         block.add_module(
@@ -250,7 +252,8 @@ class REDENT2D(nn.Module):
                             in_channels=hidden_channels[i - 1],
                             out_channels=hidden_channels[i],
                             kernel_size=ks,
-                            padding=padding
+                            padding=padding,
+                            padding_mode=padding_mode
                         ),
                     )
                     # block.add_module(
@@ -266,7 +269,8 @@ class REDENT2D(nn.Module):
                                 in_channels=self.hidden_channels[i],
                                 out_channels=self.hidden_channels[i],
                                 kernel_size=ks,
-                                padding=padding
+                                padding=padding,
+                                padding_mode=padding_mode
                             ),
                         )
                         # block.add_module(
@@ -287,7 +291,8 @@ class REDENT2D(nn.Module):
                             in_channels=hidden_channels[i - 1],
                             out_channels=hidden_channels[i],
                             kernel_size=ks,
-                            padding=padding
+                            padding=padding,
+                            padding_mode=padding_mode
                         ),
                     )
                     # block.add_module(
@@ -304,7 +309,8 @@ class REDENT2D(nn.Module):
                                 in_channels=self.hidden_channels[i],
                                 out_channels=self.hidden_channels[i],
                                 kernel_size=ks,
-                                padding=padding
+                                padding=padding,
+                                padding_mode=padding_mode
                             ),
                         )
                         block.add_module(
@@ -327,9 +333,9 @@ class REDENT2D(nn.Module):
                             in_channels=hidden_channels[n_conv_layers - 1 - i],
                             out_channels=hidden_channels[n_conv_layers - 1 - (i + 1)],
                             kernel_size=[ks[0] , ks[1]],
-                            padding=[(ks[0]-1)//2 , (ks[1]-1)//2],
+                            padding=[(ks[0]-3)//2 , (ks[1]-1)//2],
                             padding_mode="zeros",
-                            output_padding=(1,0)
+                            output_padding=(0,0)
                         ),
                     )
                     # block.add_module(
@@ -441,9 +447,9 @@ class REDENT2D(nn.Module):
                             in_channels=hidden_channels[0],
                             out_channels=self.in_channels,
                             kernel_size=[ks[0] , ks[1]],
-                            padding=[(ks[0]-1)//2 , (ks[1]-1)//2],
+                            padding=[(ks[0]-3)//2 , (ks[1]-1)//2],
                             padding_mode="zeros",
-                            output_padding=(1,0)
+                            output_padding=(0,0)
                         ),
                     )
                     # block.add_module(f"activation_final{i+1}", self.Activation)

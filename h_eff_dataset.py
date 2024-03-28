@@ -62,7 +62,7 @@ class Driving:
 
 # hyperparameters
 
-nbatch = 10
+nbatch = 1000
 
 batch_size = 1000
 l = 8
@@ -150,7 +150,7 @@ for idx_batch in trange(0, nbatch):
         #hi = np.random.uniform(min_h[idx_batch], max_h[idx_batch], size=(batch_size, l))
         #hf = np.random.uniform(min_h[jdx_batch], max_h[jdx_batch], size=(batch_size, l))
         hi=np.random.uniform(range_h[idx_batch],range_h[idx_batch]+1.,size=(batch_size,l))
-        
+        delta=np.random.uniform(0.1,0.5,size=(batch_size,l))
         
 
         for idx in trange(0, batch_size):
@@ -159,7 +159,7 @@ for idx_batch in trange(0, nbatch):
 
             #random_int = np.random.randint(len(rates))
             #rate = rates[random_int]
-            h=0.5*np.cos(time*rate)[:,None]+hi[idx,None,:]
+            h=delta[idx,None,:]*np.cos(time*rate)[:,None]+hi[idx,None,:]
             #h = (
             #    np.exp(-1 * rate * time)[:, None] * hi[idx, None, :]
             #    + (1 - np.exp(-1 * rate * time)[:, None]) * hf[idx, None, :]

@@ -10,13 +10,14 @@ from src.training.models import TDDFTCNNNoMemory,  LSTMTDDFT,REDENT2D,REDENTnopo
 from src.training.unet_recurrent import UnetLSTM_beta
 from src.training.model_unet import AutoEncoder,DenseAutoEncoder,REDENTnopooling2D
 from src.training.train_module import fit
+from src.training.models_vae import VarAE
 from src.training.seq2seq import Seq2Seq
 from src.training.utils import (
     count_parameters,
     get_optimizer,
     make_data_loader_unet,
 )
-
+from src.training.model_utils.utils_vae import VaeLoss
 
 # %%
 
@@ -304,9 +305,9 @@ def main(args):
 
         if args.model_type == "REDENT2D":
             model = REDENT2D(
-                Loss=nn.MSELoss(),
+                Loss=nn.L1Loss(),
                 in_channels=input_channels,
-                Activation=nn.ReLU(),
+                Activation=nn.GELU(),
                 hidden_channels=hc,
                 ks=kernel_size,
                 padding=padding,
@@ -350,6 +351,18 @@ def main(args):
                 loss=nn.MSELoss(),
                 regularization=10 ** (-1 * args.regularization),
             )
+            
+        elif args.model_type=="VAE":
+            VarAE(
+            latent_dimension=16*8,
+            hidden_channel=hc,
+            input_channels=input_channels,
+            input_size=input_size,
+            padding=padding,
+            padding_mode=padding_mode,
+            kernel_size=kernel_size,
+            
+        )
         elif args.model_type == "TDDFTCNN":
             pixel = False
             model = TDDFTCNNNoMemory(
@@ -364,25 +377,12 @@ def main(args):
                 out_channels=input_channels,
                 t_interval_range=time_interval,
             )
-        elif args.model_type == "UnetLSTM":
+        elif args.model_type == "AutoEncoder":
             pixel = False
-            model = UnetLSTM_beta(
-                Loss=nn.L1Loss(),
-                in_channels=input_channels,
-                input_size=args.input_size,
-                activation=nn.GELU(),
-                hc=hc,
-                kernel_size=kernel_size[0],
-                # pooling_size=pooling_size,
-                n_layers=args.n_layers,
-                hidden_neurons=args.hidden_neurons,
-                latent_dimension=args.latent_dimension,
-                out_channels=input_channels,
-                lstm_layers=args.lstm_layers,
-            )
+            model = AutoEncoder(hc,input_size,output_size,kernel_size,pooling_size,padding_mode,input_channels,input_channels,nn.GELU(),n_dense_layers=6,hidden_neurons=40,Loss=nn.L1Loss())
             
         elif args.model_type=="DenseAutoEncoder":
-            model=DenseAutoEncoder(hidden_channels=hc,input_size=input_size,output_size=output_size,input_channels=input_channels,output_channels=input_channels,Activation=nn.ReLU(),n_dense_layers=6,hidden_neurons=200,Loss=nn.MSELoss())
+            model=DenseAutoEncoder(hidden_channels=hc,input_size=input_size,output_size=output_size,input_channels=input_channels,output_channels=input_channels,Activation=nn.GELU(),n_dense_layers=6,hidden_neurons=200,Loss=nn.L1Loss())
 
     model = model.to(pt.double)
     model = model.to(device=device)
