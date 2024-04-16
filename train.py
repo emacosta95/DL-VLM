@@ -361,7 +361,9 @@ def main(args):
             padding=padding,
             padding_mode=padding_mode,
             kernel_size=kernel_size,
-            
+            pooling_size=pooling_size,
+            activation="GELU",
+            Loss=VaeLoss,
         )
         elif args.model_type == "TDDFTCNN":
             pixel = False

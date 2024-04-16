@@ -2,6 +2,7 @@ import torch as pt
 from torch.nn import functional as F
 import torch
 from typing import Tuple
+from torch import nn
 
 class VaeLoss(nn.Module):
     def __init__(self, variational_beta):

@@ -283,7 +283,6 @@ class Decoder(nn.Module):
         kernel_size: int,
         pooling_size: int,
         activation: str,
-        dx: float,
     ):
         super().__init__()
 
@@ -291,12 +290,12 @@ class Decoder(nn.Module):
 
         self.output_size = output_size
         self.pooling_size = pooling_size
-        self.dx = dx
+
 
         self.recon_block = nn.Sequential(
             nn.Linear(
                 latent_dimension,
-                int((output_size[0]*output_size[1]) / (pooling_size[0]) ** len(hidden_channels))
+                int((output_size[0]*output_size[1]) / (pooling_size) ** len(hidden_channels))
                 * hidden_channels[0],
             ),
         )
@@ -339,7 +338,7 @@ class Decoder(nn.Module):
         x = x.view(
             -1,
             self.hidden_channel[0],
-            int((self.output_size[0]*self.output_size[1]) / (self.pooling_size[0] ** len(self.hidden_channel))),
+            int((self.output_size[0]*self.output_size[1]) / (self.pooling_size ** len(self.hidden_channel))),
         )
         for conv in self.conv_list:
             x = conv(x)
@@ -486,28 +485,37 @@ class VarAE(nn.Module):
         padding: int,
         padding_mode: str,
         kernel_size: int,
+        Loss:nn.Module,
+        pooling_size:int,
+        activation:nn.Module
     ):
         super().__init__()
 
         self.encoder = Encode(
             input_channels=input_channels,
             input_size=input_size,
-            hidden_channel=hidden_channel,
+            hidden_channels=hidden_channel,
             latent_dimension=latent_dimension,
             padding=padding,
             padding_mode=padding_mode,
             kernel_size=kernel_size,
+            pooling_size=pooling_size,
+            activation=activation
         )
 
         self.decoder = Decoder(
             output_channels=input_channels,
             output_size=input_size,
-            hidden_channel=hidden_channel,
+            hidden_channels=hidden_channel,
             latent_dimension=latent_dimension,
             padding=padding,
             padding_mode=padding_mode,
             kernel_size=kernel_size,
+            pooling_size=pooling_size,
+            activation=activation
         )
+        
+        self.loss=Loss
 
     def forward(self, x):
         latent_mu, latent_logvar = self.encoder(x)
@@ -526,3 +534,21 @@ class VarAE(nn.Module):
             # return eps.mul(std).add_(mu)
         else:
             return mu
+
+    def train_step(self, batch: Tuple, device: str):
+            x = batch[0]
+            x = x.unsqueeze(1).to(device=device)
+            latent_mu, latent_logvar = self.Encoder(x)
+            latent = self._latent_sample(latent_mu, latent_logvar)
+            x_recon = self.Decoder(latent)
+            loss, kldiv = self.loss(x_recon, x, latent_mu, latent_logvar)
+            return loss, kldiv
+        
+    def valid_step(self, batch: Tuple, device: str):
+            x = batch[0]
+            x = x.unsqueeze(1).to(device=device)
+            latent_mu, latent_logvar = self.Encoder(x)
+            latent = self._latent_sample(latent_mu, latent_logvar)
+            x_recon = self.Decoder(latent)
+            loss, kldiv = self.loss(x_recon, x, latent_mu, latent_logvar)
+            return loss, kldiv
