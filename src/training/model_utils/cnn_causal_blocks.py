@@ -51,48 +51,34 @@ class MaskedTimeConv2d(nn.Conv2d):
         kernel_size = _pair(self.kernel_size)
         stride = _pair(self.stride)
         dilation = _pair(self.dilation)
-        self.padding = [
-            int((kernel_size[0] - 1) * dilation[0]) // 2,
-            int((kernel_size[1] - 1) * dilation[1]) // 2,
+        padding = [
+            ((kernel_size[0] - 1) * dilation[0] // 2),
+            ((kernel_size[1] - 1) * dilation[1] // 2),
         ]
-        # padding = _pair(padding)
-        # self.left_padding = padding[0]
-        # self.up_padding = padding[1]
+        self.padding = padding
         self.padding_mode = "zeros"
 
         _, _, kh, kw = self.weight.shape
         self.register_buffer("mask", torch.ones([kh, kw]))
         # type_mask=A excludes the central pixel
-        self.mask[
-            kh // 2 + 1 :, :
-        ] = 0.0  # for just the time component but with a symmetric padding
+        self.mask[:, kw // 2 + 1 :] = (
+            0.0  # for just the time component but with a symmetric padding
+        )
         if self.mask_type == "A":
-            self.mask[kh // 2, :] = 0.0
+            self.mask[:, kw // 2] = 0.0
         self.weight.data *= self.mask
-
-        print(self.mask)
 
         # Correction to Xavier initialization
         self.weight.data *= torch.sqrt(self.mask.numel() / self.mask.sum())
 
-    def forward(self, x):
-        # x = F.pad(
-        #     x,
-        #     (
-        #         self.up_padding,
-        #         self.up_padding,
-        #         self.left_padding,
-        #         0,
-        #     ),
-        # )  # asymmetric in time, zero padding
-        # # print("new inputs->,", inputs.shape)
+    def forward(self, inputs):
+
         return F.conv2d(
-            x,
+            inputs,
             weight=self.mask * self.weight,
             bias=self.bias,
             stride=self.stride,
             padding=self.padding,
-            # padding_mode=self.padding_mode,
             dilation=self.dilation,
         )
 
@@ -123,9 +109,9 @@ class MaskedSpaceConv2d(nn.Conv2d):
         _, _, kh, kw = self.weight.shape
         self.register_buffer("mask", torch.ones([kh, kw]))
         # type_mask=A excludes the central pixel
-        self.mask[
-            :, kw // 2 + 1 :
-        ] = 0.0  # for just the time component but with a symmetric padding
+        self.mask[:, kw // 2 + 1 :] = (
+            0.0  # for just the time component but with a symmetric padding
+        )
         if self.mask_type == "A":
             self.mask[:, kw // 2] = 0.0
         self.weight.data *= self.mask
@@ -184,7 +170,7 @@ class GatedConv2D(nn.Module):
             in_channels=hidden_channels,
             out_channels=out_channels,
             padding=[0, (kernel_size[1] - 1) // 2],
-            padding_mode="circular"
+            padding_mode="circular",
             # mask_type=mask_type,
         )
 

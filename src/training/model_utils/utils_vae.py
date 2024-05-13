@@ -4,6 +4,7 @@ import torch
 from typing import Tuple
 from torch import nn
 
+
 class VaeLoss(nn.Module):
     def __init__(self, variational_beta):
 
@@ -18,7 +19,7 @@ class VaeLoss(nn.Module):
         )
         kldivergence = -0.5 * pt.mean(1 + logvar - mu.pow(2) - logvar.exp())
         return recon_loss + self.variational_beta * kldivergence, kldivergence
-    
+
     def train_step(self, batch: Tuple, device: str):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)
@@ -26,7 +27,7 @@ class VaeLoss(nn.Module):
         x = self.forward(x)
         loss = self.loss(x, y)
         return loss
-    
+
     def valid_step(self, batch: Tuple, device: str):
         x, y = batch
         x = x.to(device=device, dtype=torch.double)

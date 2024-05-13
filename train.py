@@ -7,7 +7,13 @@ import numpy as np
 import torch as pt
 import torch.nn as nn
 
-from src.training.models import TDDFTCNNNoMemory, LSTMTDDFT, REDENT2D, REDENTnopooling
+from src.training.models import (
+    TDDFTCNNNoMemory,
+    LSTMTDDFT,
+    REDENT2D,
+    REDENTnopooling,
+    REDENT2DPCA,
+)
 from src.training.unet_recurrent import UnetLSTM_beta
 from src.training.model_unet import AutoEncoder, DenseAutoEncoder, REDENTnopooling2D
 from src.training.train_module import fit
@@ -305,7 +311,7 @@ def main(args):
         history_best = []
 
         if args.model_type == "REDENT2D":
-            model = REDENT2D(
+            model = REDENT2DPCA(
                 Loss=nn.L1Loss(),
                 in_channels=input_channels,
                 Activation=nn.GELU(),
