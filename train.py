@@ -16,6 +16,7 @@ from src.training.models import (
 )
 from src.training.unet_recurrent import UnetLSTM_beta
 from src.training.model_unet import AutoEncoder, DenseAutoEncoder, REDENTnopooling2D
+from src.training.pixel_model import PixelCNN
 from src.training.train_module import fit
 from src.training.models_vae import VarAE
 from src.training.seq2seq import Seq2Seq
@@ -420,6 +421,20 @@ def main(args):
                 n_dense_layers=6,
                 hidden_neurons=200,
                 Loss=nn.L1Loss(),
+            )
+
+        elif args.model_type == "PixelCNN":
+            model = PixelCNN(
+                Loss=nn.MSELoss(),
+                in_channels=input_channels,
+                Activation=nn.ReLU(),
+                hidden_channels=hc,
+                ks=kernel_size,
+                padding_mode=padding_mode,
+                out_features=input_size,
+                in_features=input_size,
+                out_channels=input_channels,
+                t_interval_range=time_interval,
             )
 
     model = model.to(pt.double)

@@ -1027,7 +1027,7 @@ class REDENTnopooling(nn.Module):
                     block = nn.Sequential()
                     block.add_module(
                         f"conv{i+1}",
-                        nn.Conv2d(
+                        nn.Conv1d(
                             dilation=1,
                             stride=1,
                             in_channels=in_channels,
@@ -1037,14 +1037,12 @@ class REDENTnopooling(nn.Module):
                             padding_mode=padding_mode,
                         ),
                     )
-                    block.add_module(
-                        f"batch_norm {i+1}", nn.BatchNorm2d(hidden_channels[i])
-                    )
+                    #
                     block.add_module(f"activation {i+1}", self.Activation)
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv2d(
+                            nn.Conv1d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[i],
@@ -1054,10 +1052,10 @@ class REDENTnopooling(nn.Module):
                                 padding_mode=padding_mode,
                             ),
                         )
-                        block.add_module(
-                            f"batch_norm {i+1}_{j+1}",
-                            nn.BatchNorm2d(self.hidden_channels[i]),
-                        )
+                        # block.add_module(
+                        #     f"batch_norm {i+1}_{j+1}",
+                        #     nn.BatchNorm1d(self.hidden_channels[i]),
+                        # )
                         block.add_module(f"activation_{i+1}_{j+1}", self.Activation)
                     # block.add_module(f"pooling {i+1}", nn.#AvgPool1d(kernel_size=2))
                     self.conv_downsample.append(block)
@@ -1066,7 +1064,7 @@ class REDENTnopooling(nn.Module):
                     block = nn.Sequential()
                     block.add_module(
                         f"conv{i+1}",
-                        nn.Conv2d(
+                        nn.Conv1d(
                             dilation=1,
                             stride=1,
                             in_channels=hidden_channels[i - 1],
@@ -1083,7 +1081,7 @@ class REDENTnopooling(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv2d(
+                            nn.Conv1d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[i],
@@ -1093,10 +1091,10 @@ class REDENTnopooling(nn.Module):
                                 padding_mode=padding_mode,
                             ),
                         )
-                        block.add_module(
-                            f"batch_norm {i+1}_{j+1}",
-                            nn.BatchNorm2d(self.hidden_channels[i]),
-                        )
+                        # block.add_module(
+                        #     f"batch_norm {i+1}_{j+1}",
+                        #     nn.BatchNorm1d(self.hidden_channels[i]),
+                        # )
                         block.add_module(f"activation_{i+1}_{j+1}", self.Activation)
                     # block.add_module(f"pooling {i+1}", nn.#AvgPool1d(kernel_size=2))
                     self.conv_downsample.append(block)
@@ -1105,7 +1103,7 @@ class REDENTnopooling(nn.Module):
 
                     block.add_module(
                         f"conv{i+1}",
-                        nn.Conv2d(
+                        nn.Conv1d(
                             dilation=1,
                             stride=1,
                             in_channels=hidden_channels[i - 1],
@@ -1115,15 +1113,15 @@ class REDENTnopooling(nn.Module):
                             padding_mode=padding_mode,
                         ),
                     )
-                    block.add_module(
-                        f"batch_norm {i+1}", nn.BatchNorm2d(hidden_channels[i])
-                    )
+                    # block.add_module(
+                    #     f"batch_norm {i+1}", nn.BatchNorm2d(hidden_channels[i])
+                    # )
                     block.add_module(f"activation_{i+1}", self.Activation)
 
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv2d(
+                            nn.Conv1d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[i],
@@ -1133,10 +1131,10 @@ class REDENTnopooling(nn.Module):
                                 padding_mode=padding_mode,
                             ),
                         )
-                        block.add_module(
-                            f"batch_norm {i+1}_{j+1}",
-                            nn.BatchNorm2d(self.hidden_channels[i]),
-                        )
+                        # block.add_module(
+                        #     f"batch_norm {i+1}_{j+1}",
+                        #     nn.BatchNorm1d(self.hidden_channels[i]),
+                        # )
                         block.add_module(f"activation_{i+1}_{j+1}", self.Activation)
                     # block.add_module(f"pooling {i+1}", nn.AvgPool1d(kernel_size=2))
                     self.conv_downsample.append(block)
@@ -1146,7 +1144,7 @@ class REDENTnopooling(nn.Module):
                     block = nn.Sequential()
                     block.add_module(
                         f"trans_conv{i+1}",
-                        nn.Conv2d(
+                        nn.Conv1d(
                             stride=1,
                             in_channels=hidden_channels[n_conv_layers - 1 - i],
                             out_channels=hidden_channels[n_conv_layers - 1 - (i + 1)],
@@ -1155,17 +1153,17 @@ class REDENTnopooling(nn.Module):
                             padding_mode="circular",
                         ),
                     )
-                    block.add_module(
-                        f"batch_norm {i+1}",
-                        nn.BatchNorm2d(
-                            self.hidden_channels[n_conv_layers - 1 - (i + 1)]
-                        ),
-                    )
+                    # block.add_module(
+                    #     f"batch_norm {i+1}",
+                    #     nn.BatchNorm1d(
+                    #         self.hidden_channels[n_conv_layers - 1 - (i + 1)]
+                    #     ),
+                    # )
                     block.add_module(f"activation {i+1}", self.Activation)
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv2d(
+                            nn.Conv1d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[
@@ -1179,19 +1177,19 @@ class REDENTnopooling(nn.Module):
                                 padding_mode=padding_mode,
                             ),
                         )
-                        block.add_module(
-                            f"batch_norm {i+1}_{j+1}",
-                            nn.BatchNorm2d(
-                                self.hidden_channels[n_conv_layers - 1 - (i + 1)]
-                            ),
-                        )
+                        # block.add_module(
+                        #     f"batch_norm {i+1}_{j+1}",
+                        #     nn.BatchNorm1d(
+                        #         self.hidden_channels[n_conv_layers - 1 - (i + 1)]
+                        #     ),
+                        # )
                         block.add_module(f"activation_{i+1}_{j+1}", self.Activation)
                     self.conv_upsample.append(block)
                 elif (i > 0) and (i < n_conv_layers - 1):
                     block = nn.Sequential()
                     block.add_module(
                         f"trans_conv{i+1}",
-                        nn.Conv2d(
+                        nn.Conv1d(
                             stride=1,
                             in_channels=hidden_channels[n_conv_layers - 1 - (i)],
                             out_channels=hidden_channels[n_conv_layers - 1 - (i + 1)],
@@ -1200,17 +1198,17 @@ class REDENTnopooling(nn.Module):
                             padding_mode="circular",
                         ),
                     )
-                    block.add_module(
-                        f"batch_norm {i+1}",
-                        nn.BatchNorm2d(
-                            self.hidden_channels[n_conv_layers - 1 - (i + 1)]
-                        ),
-                    )
+                    # block.add_module(
+                    #     f"batch_norm {i+1}",
+                    #     nn.BatchNorm1d(
+                    #         self.hidden_channels[n_conv_layers - 1 - (i + 1)]
+                    #     ),
+                    # )
                     block.add_module(f"activation {i+1}", self.Activation)
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv2d(
+                            nn.Conv1d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[
@@ -1224,12 +1222,12 @@ class REDENTnopooling(nn.Module):
                                 padding_mode=padding_mode,
                             ),
                         )
-                        block.add_module(
-                            f"batch_norm {i+1}_{j+1}",
-                            nn.BatchNorm2d(
-                                self.hidden_channels[n_conv_layers - 1 - (i + 1)]
-                            ),
-                        )
+                        # block.add_module(
+                        #     f"batch_norm {i+1}_{j+1}",
+                        #     nn.BatchNorm1d(
+                        #         self.hidden_channels[n_conv_layers - 1 - (i + 1)]
+                        #     ),
+                        # )
                         block.add_module(f"activation_{i+1}_{j+1}", self.Activation)
                     self.conv_upsample.append(block)
                 elif i == n_conv_layers - 1:
@@ -1237,7 +1235,7 @@ class REDENTnopooling(nn.Module):
                     for j in range(self.n_block_layers):
                         block.add_module(
                             f"conv_{i+1}_{j+1}",
-                            nn.Conv2d(
+                            nn.Conv1d(
                                 dilation=1,
                                 stride=1,
                                 in_channels=self.hidden_channels[
@@ -1251,17 +1249,17 @@ class REDENTnopooling(nn.Module):
                                 padding_mode=padding_mode,
                             ),
                         )
-                        block.add_module(
-                            f"batch_norm {i+1}_{j+1}",
-                            nn.BatchNorm2d(
-                                self.hidden_channels[n_conv_layers - 1 - (i)]
-                            ),
-                        )
+                        # block.add_module(
+                        #     f"batch_norm {i+1}_{j+1}",
+                        #     nn.BatchNorm1d(
+                        #         self.hidden_channels[n_conv_layers - 1 - (i)]
+                        #     ),
+                        # )
                         block.add_module(f"activation_bis_{i+1}_{j+1}", self.Activation)
 
                     block.add_module(
                         f"trans_conv{i+1}",
-                        nn.Conv2d(
+                        nn.Conv1d(
                             stride=1,
                             in_channels=hidden_channels[n_conv_layers - 1 - (i)],
                             out_channels=self.out_channels,
@@ -1270,9 +1268,9 @@ class REDENTnopooling(nn.Module):
                             padding_mode="zeros",
                         ),
                     )
-                    block.add_module(
-                        f"batch_norm {i+1}", nn.BatchNorm2d(self.out_channels)
-                    )
+                    # block.add_module(
+                    #     f"batch_norm {i+1}", nn.BatchNorm1d(self.out_channels)
+                    # )
                     self.conv_upsample.append(block)
 
     def forward(self, x: torch.tensor) -> torch.tensor:

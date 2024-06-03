@@ -64,7 +64,7 @@ class Driving:
 
 nbatch = 1
 
-batch_size = 200000
+batch_size = 20000
 l = 8
 # rates = [0.1, 0.5, 0.8, 1.0]
 
@@ -102,6 +102,8 @@ ham0 = SpinHamiltonian(
     coupling_values=[j],
     size=l,
 )
+
+hamExtX = SpinOperator(index=[("x", i) for i in range(l)], coupling=[omega] * l, size=l)
 
 obs: List[qutip.Qobj] = []
 current_obs: List[qutip.Qobj] = []
@@ -156,6 +158,7 @@ for idx_batch in trange(0, nbatch):
     # )
     hi = np.ones(l)  # we fix the initial field to be 1J
     delta = np.random.uniform(0.1, 0.8, size=(batch_size, l))
+    # delta_uniform = np.random.uniform(0.1, 0.8, size=(batch_size))
 
     for idx in trange(0, batch_size):
 
@@ -163,6 +166,7 @@ for idx_batch in trange(0, nbatch):
 
         # random_int = np.random.randint(len(rates))
         # rate = rates[random_int]
+        # h = delta_uniform[idx, None, None] * np.sin(time * rate)[:, None] + hi[None, :]
         h = delta[idx, None, :] * np.sin(time * rate)[:, None] + hi[None, :]
         # h = (
         #    np.exp(-1 * rate * time)[:, None] * hi[idx, None, :]
@@ -173,7 +177,7 @@ for idx_batch in trange(0, nbatch):
             index=[("z", i) for i in range(l)], coupling=h[0], size=l
         )
 
-        eng, psi0 = np.linalg.eigh(ham0.qutip_op + hamExtZ.qutip_op)
+        eng, psi0 = np.linalg.eigh(ham0.qutip_op + hamExtZ.qutip_op + hamExtX.qutip_op)
         psi0 = qutip.Qobj(
             psi0[:, 0], shape=psi0.shape, dims=([[2 for i in range(l)], [1]])
         )
@@ -191,7 +195,7 @@ for idx_batch in trange(0, nbatch):
         # compute and check the magnetizations
 
         # build up the time dependent object for the qutip evolution
-        hamiltonian = [ham0.qutip_op]
+        hamiltonian = [ham0.qutip_op + hamExtX.qutip_op]
 
         for i in range(l):
             drive_z = Driving(
@@ -281,7 +285,7 @@ for idx_batch in trange(0, nbatch):
         current_derivative_tot[(batch_size * (idx_batch) + idx)] = current_derivative
 
     np.savez(
-        f"data/dataset_h_eff/periodic/dataset_periodic_random_rate_03-1_random_amplitude_01-08_fixed_initial_state_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240513",
+        f"data/dataset_h_eff/periodic/xxzx_model/dataset_periodic_random_rate_03-1_random_amplitude_01-08_fixed_initial_state_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240601",
         current=current_qutip_tot,
         z=z_qutip_tot,
         h_eff=h_eff_tot,
@@ -297,7 +301,7 @@ for idx_batch in trange(0, nbatch):
     )
 
 np.savez(
-    f"data/dataset_h_eff/periodic/dataset_periodic_random_rate_03-1_random_amplitude_01-08_fixed_initial_state_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240513",
+    f"data/dataset_h_eff/periodic/xxzx_model/dataset_periodic_random_rate_03-1_random_amplitude_01-08_fixed_initial_state_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240601",
     current=current_qutip_tot,
     z=z_qutip_tot,
     h_eff=h_eff_tot,
