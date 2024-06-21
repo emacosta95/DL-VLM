@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from tqdm import trange, tqdm
 from src.qutip_lab.qutip_class import SpinOperator, SpinHamiltonian, SteadyStateSolver
 from scipy.fft import fft, ifft
+from scipy.sparse.linalg import eigsh
 import qutip
 from qutip.metrics import fidelity
 from typing import List
@@ -131,10 +132,14 @@ for idx in trange(0, batch_size):
 
     hamExtZ = SpinOperator(index=[("z", i) for i in range(l)], coupling=h[0], size=l)
 
-    eng, psi0 = np.linalg.eigh(ham0.qutip_op + hamExtZ.qutip_op + hamExtX.qutip_op)
-    psi0 = qutip.Qobj(psi0[:, 0], shape=psi0.shape, dims=([[2 for i in range(l)], [1]]))
+    eng, psi0 = (ham0.qutip_op + hamExtZ.qutip_op + hamExtX.qutip_op).eigenstates(
+        eigvals=1
+    )
+    psi0 = psi0[
+        0
+    ]  # qutip.Qobj(psi0[:, 0], shape=psi0.shape, dims=([[2 for i in range(l)], [1]]))
 
-    # print("real ground state energy=", eng[0])
+    print("real ground state energy=", eng[0])
 
     hamiltonian = [ham0.qutip_op + hamExtX.qutip_op]
 
@@ -179,7 +184,7 @@ for idx in trange(0, batch_size):
 
     if idx % 1000 == 0:
         np.savez(
-            f"data/dataset_h_eff/periodic/xxzx_model/dataset_random_rate_random_amplitude_01-08_fixed_initial_state_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240620",
+            f"data/dataset_h_eff/xxzx_model/dataset_random_rate_random_amplitude_01-08_fixed_initial_state_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240620",
             current=np.asarray(current_qutip_tot),
             z=np.asarray(z_qutip_tot),
             h_eff=np.asarray(h_eff_tot),
@@ -190,7 +195,7 @@ for idx in trange(0, batch_size):
         )
 
 np.savez(
-    f"data/dataset_h_eff/periodic/xxzx_model/dataset_random_rate_random_amplitude_01-08_fixed_initial_state_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240620",
+    f"data/dataset_h_eff/xxzx_model/dataset_random_rate_random_amplitude_01-08_fixed_initial_state_nbatch_{nbatch}_batchsize_{batch_size}_steps_{steps}_tf_{tf}_l_{l}_240620",
     current=current_qutip_tot,
     z=z_qutip_tot,
     h_eff=h_eff_tot,
