@@ -13,6 +13,7 @@ from src.training.models import (
     REDENT2D,
     REDENTnopooling,
     REDENT2DPCA,
+    ConvLSTMTDDFT
 )
 from src.training.unet_recurrent import UnetLSTM_beta
 from src.training.model_unet import AutoEncoder, DenseAutoEncoder, REDENTnopooling2D
@@ -25,6 +26,7 @@ from src.training.utils import (
     get_optimizer,
     make_data_loader_unet,
 )
+
 from src.training.model_utils.utils_vae import VaeLoss
 
 # %%
@@ -127,6 +129,14 @@ parser.add_argument(
     type=int,
     nargs="+",
     help="number of features of the input (default=5)",
+    default=5,
+)
+
+parser.add_argument(
+    "--output_size",
+    type=int,
+    nargs="+",
+    help="number of features of the output (default=5)",
     default=5,
 )
 
@@ -251,7 +261,7 @@ def main(args):
 
     # 256 for model test, 30 for the others
     hc = args.hidden_channels
-    output_size = input_size
+    output_size = args.output_size
     pooling_size = args.pooling_size
     padding = args.padding  # 6
     print("padding=", padding)
@@ -331,6 +341,7 @@ def main(args):
         elif args.model_type == "LSTM":
             model = LSTMTDDFT(
                 input_size=input_size,
+                output_size=output_size,
                 hidden_size=hc[0],
                 num_layers=len(hc),
                 dropout=0,
@@ -393,6 +404,9 @@ def main(args):
                 out_channels=input_channels,
                 t_interval_range=time_interval,
             )
+        # WORK IN PROGRESS
+        elif args.model_type=='CLSTM':
+            model=ConvLSTMTDDFT(input_channels=input_channels,hidden_channels=hc,output_channels=input_channels,kernel_size=tuple(kernel_size),loss=nn.MSELoss())
         elif args.model_type == "AutoEncoder":
             pixel = False
             model = AutoEncoder(

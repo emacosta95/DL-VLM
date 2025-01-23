@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 from typing import Tuple
 from src.training.conv_block_model import ConvBlock
-
+from src.training.ConvLSTM_pytorch.convlstm import ConvLSTM
 from src.training.model_utils.cnn_causal_blocks import (
     CausalConv2d,
 )
@@ -1391,6 +1391,7 @@ class LSTMTDDFT(nn.Module):
     def __init__(
         self,
         input_size: int,
+        output_size:int,
         hidden_size: int,
         num_layers: int,
         dropout: float,
@@ -1403,7 +1404,7 @@ class LSTMTDDFT(nn.Module):
             num_layers=num_layers,
             dropout=dropout,
             batch_first=True,
-            proj_size=input_size[0],
+            proj_size=output_size[0],
         )
 
         self.loss = loss
@@ -1424,5 +1425,43 @@ class LSTMTDDFT(nn.Module):
         x = x.to(device=device, dtype=torch.double)
         y = y.to(device=device, dtype=torch.double)
         x, _ = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+
+
+class ConvLSTMTDDFT(nn.Module):
+    def __init__(
+        self,
+        input_channels: int,
+        output_channels:int,
+        hidden_channels: List,
+        kernel_size: List,
+        loss: nn.Module,
+    ) -> None:
+        super().__init__()
+        self.model = ConvLSTM(
+            input_dim=input_channels,hidden_dim=hidden_channels+[output_channels],num_layers=len(hidden_channels)+1,kernel_size=kernel_size,bias=True,batch_first=True,return_all_layers=False)
+
+        self.loss = loss
+
+    def forward(self, x: torch.Tensor):
+        return self.model(x)
+
+    def train_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        output, _ = self.forward(x)
+        x=output[0]
+        
+        loss = self.loss(x, y)
+        return loss
+
+    def valid_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        output, _ = self.forward(x)
+        x=output[0]
         loss = self.loss(x, y)
         return loss
