@@ -74,7 +74,7 @@ class Driving:
 
 nbatch = 1
 
-batch_size =1000
+batch_size =100
 
 initial_state_ground_state=True
 pbc=True
@@ -96,7 +96,7 @@ amplitude_min=0.
 steps = 600
 tf = 60.0
 
-steps_tddft=600
+steps_tddft=steps*3
 
 time = np.linspace(0.0, tf, steps)
 time_tddft=np.linspace(0.0, tf, steps_tddft)
@@ -228,8 +228,8 @@ for idx in trange(0, batch_size):
     # extrapolate the fields
     f=interp1d(time,z_exp,axis=0)
     z_tddft=f(time_tddft)
-    current_exp=np.gradient(z_exp,time,axis=0)
-    current_derivative = np.gradient(current_exp, time, axis=0)
+    current_exp=np.gradient(z_tddft,time_tddft,axis=0)
+    current_derivative = np.gradient(current_exp, time_tddft, axis=0)
 
     
 
@@ -255,7 +255,7 @@ for idx in trange(0, batch_size):
                 shift_minus[:-1]=x_ave[:-1] #np.roll(x_sp,shift=-1,axis=-1)
                 #print(shift_minus,shift_plus)
                 nonlinear_term=np.abs(j)*(shift_plus+shift_minus)+omega+10**-10
-            h_eff=(0.25*current_derivative[i]/nonlinear_term+z_exp[i]*nonlinear_term)/(x_ave+10**-10)
+            h_eff=(0.25*current_derivative[i]/nonlinear_term+z_tddft[i]*nonlinear_term)/(x_ave+10**-10)
             h_eff_vector[i]=h_eff
             hamiltonian_t=nonlinear_term[:,None,None]*x_op[None,:,:]+h_eff[:,None,None]*z_op[None,:,:]
             exp_h_t=np.zeros((l,2,2),dtype=np.complex128)
@@ -278,10 +278,10 @@ for idx in trange(0, batch_size):
     # update the database
     print(h_eff_vector.shape)
     h_eff_tot[idx,1:]=np.array([np.interp(time, time_tddft, h_eff_vector[:, i]) for i in range(h_eff_vector.shape[1])]).T
-    h_tot[idx,1:]=np.array([np.interp(time, time_tddft, h[:, i]) for i in range(h.shape[1])]).T
+    h_tot[idx,1:]=np.array([np.interp(time, time, h[:, i]) for i in range(h.shape[1])]).T
     h_tot[idx,0]=z_exp[0]
     
-    z_qutip_tot[idx,]=np.array([np.interp(time, time_tddft, z_exp[:, i]) for i in range(z_exp.shape[1])]).T
+    z_qutip_tot[idx,]=np.array([np.interp(time, time_tddft, z_tddft[:, i]) for i in range(z_exp.shape[1])]).T
     z_auxiliary[idx,]= np.array([np.interp(time, time_tddft, z_reconstruction[:, i]) for i in range(z_reconstruction.shape[1])]).T
     #z_persite_qutip_tot[idx,:,:]=np.sum(z_exp,axis=-1)
     current_qutip_tot[idx,]=np.array([np.interp(time, time_tddft, current_exp[:, i]) for i in range(current_exp.shape[1])]).T
