@@ -1,0 +1,29 @@
+  0%|          | 0/20 [00:00<?, ?it/s]real ground state energy= -16.0
+
+  0%|          | 0/6000 [00:00<?, ?it/s][A/home/ecosta/DL-VLM/exact_diagonalization_dataset_maker.py:273: ComplexWarning: Casting complex values to real discards the imaginary part
+  z_reconstruction[i]=np.einsum('al,ab,bl->l',np.conj(psi),z_op,psi)
+/home/ecosta/DL-VLM/exact_diagonalization_dataset_maker.py:259: ComplexWarning: Casting complex values to real discards the imaginary part
+  h_eff_vector[i]=h_eff
+
+  1%|          | 58/6000 [00:00<00:10, 574.15it/s][A
+  2%|▏         | 116/6000 [00:00<00:10, 573.16it/s][A
+  3%|▎         | 176/6000 [00:00<00:10, 581.96it/s][A
+  4%|▍         | 237/6000 [00:00<00:09, 591.69it/s][A
+  5%|▍         | 299/6000 [00:00<00:09, 600.44it/s][A  6%|▌         | 349/6000 [00:00<00:09, 593.87it/s]
+  0%|          | 0/20 [00:01<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/ecosta/DL-VLM/exact_diagonalization_dataset_maker.py", line 264, in <module>
+    exp_h_t[r]=expm(-1j*dt*hamiltonian_t[r])
+  File "/opt/anaconda3/envs/dft_env/lib/python3.9/site-packages/scipy/sparse/linalg/matfuncs.py", line 591, in expm
+    return _expm(A, use_exact_onenorm='auto')
+  File "/opt/anaconda3/envs/dft_env/lib/python3.9/site-packages/scipy/sparse/linalg/matfuncs.py", line 655, in _expm
+    return _solve_P_Q(U, V, structure=structure)
+  File "/opt/anaconda3/envs/dft_env/lib/python3.9/site-packages/scipy/sparse/linalg/matfuncs.py", line 709, in _solve_P_Q
+    return solve(Q, P)
+  File "/opt/anaconda3/envs/dft_env/lib/python3.9/site-packages/scipy/linalg/basic.py", line 137, in solve
+    a1 = atleast_2d(_asarray_validated(a, check_finite=check_finite))
+  File "/opt/anaconda3/envs/dft_env/lib/python3.9/site-packages/scipy/_lib/_util.py", line 293, in _asarray_validated
+    a = toarray(a)
+  File "/opt/anaconda3/envs/dft_env/lib/python3.9/site-packages/numpy/lib/function_base.py", line 602, in asarray_chkfinite
+    if a.dtype.char in typecodes['AllFloat'] and not np.isfinite(a).all():
+KeyboardInterrupt

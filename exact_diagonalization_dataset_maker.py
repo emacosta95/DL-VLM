@@ -13,6 +13,64 @@ from datetime import datetime
 from scipy.sparse.linalg import eigsh,expm
 from scipy.interpolate import interp1d
 
+
+
+def second_derivative_7point(arr, dt):
+    """
+    Computes the second-order derivative using a 9-point finite difference stencil 
+    along the time axis of a 2D array.
+
+    Parameters:
+        arr (numpy.ndarray): Input 2D array with shape [time, space].
+        dt (float): Time step between successive data points.
+
+    Returns:
+        numpy.ndarray: Second derivative array with the same shape as input.
+    """
+
+    # Ensure time axis (axis=0) has at least 9 points
+    if arr.shape[0] < 9:
+        raise ValueError("Time dimension must have at least 9 points for a 9-point stencil.")
+
+    # 9-point stencil coefficients
+    coeffs = np.array([
+        -1/560,   # f(t-4h)
+       8/315,   # f(t-3h)
+        -1/5,     # f(t-2h)
+       8/5,     # f(t-h)
+        -205/72,  # f(t)
+       8/5,     # f(t+h)
+        -1/5,     # f(t+2h)
+       8/315,   # f(t+3h)
+        -1/560    # f(t+4h)
+    ])
+
+    # Initialize output array
+    d2_arr = np.zeros_like(arr)
+
+    # Apply stencil only on valid indices (excluding boundaries)
+    for i in range(4, arr.shape[0] - 4):
+        d2_arr[i, :] = (
+            coeffs[0] * arr[i - 4, :] +
+            coeffs[1] * arr[i - 3, :] +
+            coeffs[2] * arr[i - 2, :] +
+            coeffs[3] * arr[i - 1, :] +
+            coeffs[4] * arr[i, :] +
+            coeffs[5] * arr[i + 1, :] +
+            coeffs[6] * arr[i + 2, :] +
+            coeffs[7] * arr[i + 3, :] +
+            coeffs[8] * arr[i + 4, :]
+        )
+
+    # Convert to second derivative by dividing by dt^2
+    d2_arr /= dt ** 2
+
+    # Handle boundary conditions using np.gradient as fallback
+    d2_arr[:4, :] = np.gradient(np.gradient(arr, dt, axis=0), dt, axis=0)[:4, :]
+    d2_arr[-4:, :] = np.gradient(np.gradient(arr, dt, axis=0), dt, axis=0)[-4:, :]
+
+    return d2_arr
+
 # Get the current date and time
 now = datetime.now()
 
@@ -74,7 +132,7 @@ class Driving:
 
 nbatch = 1
 
-batch_size =100
+batch_size =20
 
 initial_state_ground_state=True
 pbc=True
@@ -93,26 +151,31 @@ rate_sigma=1.5
 amplitude_max=2.
 amplitude_min=0.
 
-steps = 600
-tf = 60.0
+steps = 2000
+tf = 20.0
 
-steps_tddft=steps*3
+steps_tddft=steps
+
+final_steps=200
+
 
 time = np.linspace(0.0, tf, steps)
 time_tddft=np.linspace(0.0, tf, steps_tddft)
+time_final=np.linspace(0.0, tf, final_steps)
+
 l=8 #np.random.randint(2,10)
 
 
 info=f'xx-z-x model with omega={omega:.1f}, coupling={j: .1f} external field with rate mean={rate_mean:.1f} and rate sigma={rate_sigma:.1f} amplitude max={amplitude_max:.1f} amplitude min={amplitude_min:.1f} tf={tf:.0f} steps={steps} l variable ndata={batch_size} initial state option={initial_state_ground_state} pbc={pbc}'
-comments=condition_initial_state+' Initial state not ground state, test set'
+comments=condition_initial_state+' Initial state ground state, check up dataset. 2nd order time derivative with the 7th-point formula'
 # z_qutip_tot = np.zeros((nbatch * nbatch * batch_size, steps, l))
-z_qutip_tot = np.zeros(( batch_size , steps,l))
-z_auxiliary=np.zeros((batch_size,steps,l))
-h_eff_tot = np.zeros(( batch_size , steps+1,l))
-h_tot = np.zeros(( batch_size , steps+1,l))
-current_qutip_tot = np.zeros(( batch_size , steps,l))
-current_derivative_tot = np.zeros(( batch_size , steps,l))
-x_sp_tot = np.zeros(( batch_size , steps,l))
+z_qutip_tot = np.zeros(( batch_size , final_steps,l))
+z_auxiliary=np.zeros((batch_size,final_steps,l))
+h_eff_tot = np.zeros(( batch_size , final_steps+1,l))
+h_tot = np.zeros(( batch_size , final_steps+1,l))
+current_qutip_tot = np.zeros(( batch_size , final_steps,l))
+current_derivative_tot = np.zeros(( batch_size , final_steps,l))
+x_sp_tot = np.zeros(( batch_size , final_steps,l))
 ls=[]
 
 p=np.random.uniform(0.,0.5,size=(batch_size))
@@ -228,12 +291,13 @@ for idx in trange(0, batch_size):
     # extrapolate the fields
     f=interp1d(time,z_exp,axis=0)
     z_tddft=f(time_tddft)
-    current_exp=np.gradient(z_tddft,time_tddft,axis=0)
-    current_derivative = np.gradient(current_exp, time_tddft, axis=0)
+    current_tddft=np.gradient(z_tddft,time_tddft,axis=0)
+    #current_derivative_tddft= np.gradient(current_tddft, time_tddft, axis=0)
+    current_derivative_tddft=second_derivative_7point(z_tddft,dt=time_tddft[1]-time_tddft[0])
 
     
 
-    dt=time[1]-time[0]    
+    dt=time_tddft[1]-time_tddft[0]    
 
     z_reconstruction=np.zeros((steps_tddft,l))
     h_eff_vector=np.zeros((steps_tddft,l))
@@ -255,7 +319,7 @@ for idx in trange(0, batch_size):
                 shift_minus[:-1]=x_ave[:-1] #np.roll(x_sp,shift=-1,axis=-1)
                 #print(shift_minus,shift_plus)
                 nonlinear_term=np.abs(j)*(shift_plus+shift_minus)+omega+10**-10
-            h_eff=(0.25*current_derivative[i]/nonlinear_term+z_tddft[i]*nonlinear_term)/(x_ave+10**-10)
+            h_eff=(0.25*current_derivative_tddft[i]/nonlinear_term+z_tddft[i]*nonlinear_term)/(x_ave+1.e-10)
             h_eff_vector[i]=h_eff
             hamiltonian_t=nonlinear_term[:,None,None]*x_op[None,:,:]+h_eff[:,None,None]*z_op[None,:,:]
             exp_h_t=np.zeros((l,2,2),dtype=np.complex128)
@@ -277,15 +341,14 @@ for idx in trange(0, batch_size):
 
     # update the database
     print(h_eff_vector.shape)
-    h_eff_tot[idx,1:]=np.array([np.interp(time, time_tddft, h_eff_vector[:, i]) for i in range(h_eff_vector.shape[1])]).T
-    h_tot[idx,1:]=np.array([np.interp(time, time, h[:, i]) for i in range(h.shape[1])]).T
+    h_eff_tot[idx,1:]=np.array([np.interp(time_final, time_tddft, h_eff_vector[:, i]) for i in range(h_eff_vector.shape[1])]).T
+    h_tot[idx,1:]=np.array([np.interp(time_final, time, h[:, i]) for i in range(h.shape[1])]).T
     h_tot[idx,0]=z_exp[0]
     
-    z_qutip_tot[idx,]=np.array([np.interp(time, time_tddft, z_tddft[:, i]) for i in range(z_exp.shape[1])]).T
-    z_auxiliary[idx,]= np.array([np.interp(time, time_tddft, z_reconstruction[:, i]) for i in range(z_reconstruction.shape[1])]).T
-    #z_persite_qutip_tot[idx,:,:]=np.sum(z_exp,axis=-1)
-    current_qutip_tot[idx,]=np.array([np.interp(time, time_tddft, current_exp[:, i]) for i in range(current_exp.shape[1])]).T
-    current_derivative_tot[idx]=np.array([np.interp(time, time_tddft, current_derivative[:, i]) for i in range(current_derivative.shape[1])]).T
+    z_qutip_tot[idx,]=np.array([np.interp(time_final, time_tddft, z_tddft[:, i]) for i in range(z_tddft.shape[1])]).T
+    z_auxiliary[idx,]= np.array([np.interp(time_final, time_tddft, z_reconstruction[:, i]) for i in range(z_reconstruction.shape[1])]).T
+    current_qutip_tot[idx,]=np.array([np.interp(time_final, time_tddft, current_tddft[:, i]) for i in range(current_tddft.shape[1])]).T
+    current_derivative_tot[idx]=np.array([np.interp(time_final, time_tddft, current_derivative_tddft[:, i]) for i in range(current_derivative_tddft.shape[1])]).T
 
     if idx % 1000 == 0:
         np.savez(
@@ -296,7 +359,7 @@ for idx in trange(0, batch_size):
             h_eff=h_eff_tot[:,:,l//2-1:l//2],
             current_derivative=current_derivative_tot[:,:,l//2-1:l//2],
             h=h_tot[:,:,l//2-1:l//2],
-            time=time,
+            time=time_final,
             info=info,
             comments=comments,
             l=ls,
@@ -310,7 +373,7 @@ np.savez(
             h_eff=h_eff_tot[:,:,:1],
             current_derivative=current_derivative_tot[:,:,l//2-1:l//2],
             h=h_tot[:,:,l//2-1:l//2],
-            time=time,
+            time=time_final,
             info=info,
             comments=comments,
             l=ls,
