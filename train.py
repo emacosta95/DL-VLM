@@ -10,17 +10,10 @@ import torch.nn as nn
 from src.training.models import (
     TDDFTCNNNoMemory,
     LSTMTDDFT,
-    REDENT2D,
-    REDENTnopooling,
-    REDENT2DPCA,
-    ConvLSTMTDDFT
 )
-from src.training.unet_recurrent import UnetLSTM_beta
-from src.training.model_unet import AutoEncoder, DenseAutoEncoder, REDENTnopooling2D
-from src.training.pixel_model import PixelCNN
+
 from src.training.train_module import fit
-from src.training.models_vae import VarAE
-from src.training.seq2seq import Seq2Seq
+
 from src.training.utils import (
     count_parameters,
     get_optimizer,
@@ -321,24 +314,9 @@ def main(args):
         history_train = []
         history_best = []
 
-        if args.model_type == "REDENT2D":
-            model = REDENT2DPCA(
-                Loss=nn.L1Loss(),
-                in_channels=input_channels,
-                Activation=nn.GELU(),
-                hidden_channels=hc,
-                ks=kernel_size,
-                padding=padding,
-                padding_mode=padding_mode,
-                # pooling_size=pooling_size,
-                n_conv_layers=n_conv_layers,
-                out_features=output_size,
-                in_features=input_size,
-                out_channels=args.output_channels,
-                n_block_layers=1,
-            )
+        
 
-        elif args.model_type == "LSTM":
+        if args.model_type == "LSTM":
             model = LSTMTDDFT(
                 input_size=input_size,
                 output_size=output_size,
@@ -348,48 +326,7 @@ def main(args):
                 loss=nn.MSELoss(),
             )
 
-        elif args.model_type == "REDENTnopooling":
-            model = model = REDENTnopooling(
-                Loss=nn.MSELoss(),
-                in_channels=input_channels,
-                Activation=nn.ReLU(),
-                hidden_channels=hc,
-                ks=kernel_size,
-                padding=padding,
-                padding_mode=padding_mode,
-                # pooling_size=pooling_size,
-                n_conv_layers=n_conv_layers,
-                out_features=output_size,
-                in_features=input_size,
-                out_channels=args.output_channels,
-                n_block_layers=1,
-            )
-
-        elif args.model_type == "Seq2Seq":
-            pixel = False
-            model = Seq2Seq(
-                n_conv=len(hc),
-                out_channels=input_channels,
-                kernel_size=kernel_size,
-                hc=hc[0],
-                in_channel=input_channels,
-                loss=nn.MSELoss(),
-                regularization=10 ** (-1 * args.regularization),
-            )
-
-        elif args.model_type == "VAE":
-            model = VarAE(
-                latent_dimension=16 * 8,
-                hidden_channel=hc,
-                input_channels=input_channels,
-                input_size=input_size,
-                padding=padding,
-                padding_mode=padding_mode,
-                kernel_size=kernel_size,
-                pooling_size=pooling_size,
-                activation="GELU",
-                Loss=VaeLoss(variational_beta=0.0),
-            )
+        
         elif args.model_type == "TDDFTCNN":
             pixel = False
             model = TDDFTCNNNoMemory(
@@ -405,51 +342,6 @@ def main(args):
                 t_interval_range=time_interval,
             )
         # WORK IN PROGRESS
-        elif args.model_type=='CLSTM':
-            model=ConvLSTMTDDFT(input_channels=input_channels,hidden_channels=hc,output_channels=input_channels,kernel_size=tuple(kernel_size),loss=nn.MSELoss())
-        elif args.model_type == "AutoEncoder":
-            pixel = False
-            model = AutoEncoder(
-                hc,
-                input_size,
-                output_size,
-                kernel_size,
-                pooling_size,
-                padding_mode,
-                input_channels,
-                input_channels,
-                nn.GELU(),
-                n_dense_layers=6,
-                hidden_neurons=40,
-                Loss=nn.L1Loss(),
-            )
-
-        elif args.model_type == "DenseAutoEncoder":
-            model = DenseAutoEncoder(
-                hidden_channels=hc,
-                input_size=input_size,
-                output_size=output_size,
-                input_channels=input_channels,
-                output_channels=input_channels,
-                Activation=nn.GELU(),
-                n_dense_layers=6,
-                hidden_neurons=200,
-                Loss=nn.L1Loss(),
-            )
-
-        elif args.model_type == "PixelCNN":
-            model = PixelCNN(
-                Loss=nn.MSELoss(),
-                in_channels=input_channels,
-                Activation=nn.ReLU(),
-                hidden_channels=hc,
-                ks=kernel_size,
-                padding_mode=padding_mode,
-                out_features=input_size,
-                in_features=input_size,
-                out_channels=input_channels,
-                t_interval_range=time_interval,
-            )
 
     model = model.to(pt.double)
     model = model.to(device=device)

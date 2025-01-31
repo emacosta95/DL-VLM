@@ -106,22 +106,10 @@ def second_derivative_formula(arr, dt,derivative_formula:str):
         
     if derivative_formula=='3-points':
 
-        # Ensure time axis (axis=0) has at least 3 points
-        if arr.shape[0] < 3:
-            raise ValueError("Time dimension must have at least 3 points for a 3-point stencil.")
+        current_arr=np.gradient(arr,dt,axis=0)
+        derivative_current_arr=np.gradient(current_arr,dt,axis=0)
 
-        # Initialize output array
-        d2_arr = np.zeros_like(arr)
-
-        # Apply the 3-point stencil (central difference)
-        for i in range(1, arr.shape[0] - 1):
-            d2_arr[i, :] = (arr[i + 1, :] - 2 * arr[i, :] + arr[i - 1, :]) / (dt ** 2)
-
-        # Handle boundary conditions using forward/backward difference
-        d2_arr[0, :] = (arr[1, :] - 2 * arr[0, :] + arr[2, :]) / (dt ** 2)
-        d2_arr[-1, :] = (arr[-2, :] - 2 * arr[-1, :] + arr[-3, :]) / (dt ** 2)
-
-        return d2_arr
+        return derivative_current_arr
     
     
 
@@ -131,39 +119,6 @@ now = datetime.now()
 # Format the date and time into a string
 # Example format: YYYY-MM-DD_HH-MM
 formatted_date_time = now.strftime("%Y-%m-%d_%H-%M")
-
-def generate_smooth_gaussian_noise(
-    time: np.ndarray,
-    tau: float,
-    tf: float,
-    mean: float,
-    sigma: float,
-    min_range: float,
-    max_range: float,
-    shift: float,
-):
-    a_omegas = np.random.normal(mean, sigma, size=time.shape[0])
-    omegas = np.linspace(0, time.shape[0] * 2 * np.pi / tf, time.shape[0])
-    driving = np.zeros(time.shape[0])
-
-    for tr in range(time.shape[0]):
-        if omegas[tr] < 2 * np.pi / tau:
-            driving = driving + a_omegas[tr] * np.cos(omegas[tr] * time)
-
-        else:
-            break
-
-    max_driving = np.max(driving)
-    min_driving = np.min(driving)
-
-    old_interval = max_driving - min_driving
-    driving = (
-        (driving - min_driving) * (max_range - min_range) / old_interval
-        + min_range
-        + shift
-    )
-
-    return driving
 
 
 class Driving:
@@ -185,8 +140,8 @@ class Driving:
 # hyperaparameters
 
 # if this is true, we are making datasets just to check the feasibility of the TDDFT method
-diagnostic=True
-derivative_formula='9-points' #it can be either 3-points,5-points,7-points,9-points
+diagnostic=False
+derivative_formula='3-points' #it can be either 3-points,5-points,7-points,9-points
 
 # parameters
 
@@ -211,10 +166,10 @@ rate_sigma=1.5
 amplitude_max=2.
 amplitude_min=0.
 
-steps = 800
+steps = 200
 tf = 20.0
 
-steps_tddft=steps*2
+steps_tddft=10*steps
 
 final_steps=200
 
@@ -367,7 +322,7 @@ while(idx<batch_size):
 
     z_reconstruction=np.zeros((steps_tddft,l))
     h_eff_vector=np.zeros((steps_tddft,l))
-    for i in range(steps_tddft):
+    for i in trange(steps_tddft):
         psi_r=psi.copy()
         for f in range(1):
             x_ave=np.einsum('al,ab,bl->l',np.conj(psi_r),x_op,psi_r)
@@ -385,7 +340,7 @@ while(idx<batch_size):
                 shift_minus[:-1]=x_ave[:-1] #np.roll(x_sp,shift=-1,axis=-1)
                 #print(shift_minus,shift_plus)
                 nonlinear_term=np.abs(j)*(shift_plus+shift_minus)+omega+10**-10
-            h_eff=(0.25*current_derivative_tddft[i]/nonlinear_term+z_tddft[i]*nonlinear_term)/(x_ave+1.e-10)
+            h_eff=(0.25*current_derivative_tddft[i]/nonlinear_term+z_tddft[i]*nonlinear_term)/(x_ave+10**-10)
             h_eff_vector[i]=h_eff
             hamiltonian_t=nonlinear_term[:,None,None]*x_op[None,:,:]+h_eff[:,None,None]*z_op[None,:,:]
             exp_h_t=np.zeros((l,2,2),dtype=np.complex128)
@@ -403,6 +358,7 @@ while(idx<batch_size):
         z_reconstruction[i]=np.einsum('al,ab,bl->l',np.conj(psi),z_op,psi)
 
     dz=np.average(np.abs(z_reconstruction-z_tddft))
+    print('dz=',dz,'idx=',idx)
     if diagnostic:
         dz=0.
     
@@ -417,7 +373,7 @@ while(idx<batch_size):
         current_qutip_tot[idx,]=np.array([np.interp(time_final, time_tddft, current_tddft[:, i]) for i in range(current_tddft.shape[1])]).T
         current_derivative_tot[idx]=np.array([np.interp(time_final, time_tddft, current_derivative_tddft[:, i]) for i in range(current_derivative_tddft.shape[1])]).T
 
-        idx+=1
+        idx=idx+1
 
 
     if idx % 20==0:

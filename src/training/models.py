@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 from typing import Tuple
 from src.training.conv_block_model import ConvBlock
-from src.training.ConvLSTM_pytorch.convlstm import ConvLSTM
 from src.training.model_utils.cnn_causal_blocks import (
     CausalConv2d,
 )
