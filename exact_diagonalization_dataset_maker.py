@@ -131,6 +131,13 @@ parser.add_argument(
     default=8,
 )
 
+parser.add_argument(
+    "--dz_threshold",
+    type=float,
+    help="threshold of the error for the TDDFT simulation",
+    default=0.01,
+)
+
 args=parser.parse_args()
 
 
@@ -190,7 +197,6 @@ if diagnostic:
 
 info=f'xx-z-x model with omega={omega:.1f}, coupling={j: .1f} external field with rate mean={rate_mean:.1f} and rate sigma={rate_sigma:.1f} amplitude max={amplitude_max:.1f} amplitude min={amplitude_min:.1f} tf={tf:.0f} steps={steps} l variable ndata={batch_size} initial state option={initial_state_ground_state} pbc={pbc}'
 comments=condition_initial_state+f' Initial state ground state, with a diagonostic is {diagnostic} dataset. 2nd order time derivative with'+derivative_formula+' formula'
-# z_qutip_tot = np.zeros((nbatch * nbatch * batch_size, steps, l))
 z_qutip_tot = np.zeros(( batch_size , final_steps,l))
 z_auxiliary=np.zeros((batch_size,final_steps,l))
 h_eff_tot = np.zeros(( batch_size , final_steps+1,l))
@@ -200,8 +206,7 @@ current_derivative_tot = np.zeros(( batch_size , final_steps,l))
 x_sp_tot = np.zeros(( batch_size , final_steps,l))
 ls=[]
 
-p=np.random.uniform(0.,0.5,size=(batch_size))
-#hi = np.ones((time.shape[0], l))  # we fix the initial field to be 1J
+
 idx=0
 while(idx<batch_size):
 
@@ -216,8 +221,7 @@ while(idx<batch_size):
     hamExtX = SpinOperator(index=[("x", i) for i in range(l)], coupling=[omega] * l, size=l)
 
     obs: List[qutip.Qobj] = []
-    #current_obs: List[qutip.Qobj] = []
-
+    
     for i in range(l):
         z_op = SpinOperator(index=[("z", i)], coupling=[1.0], size=l, verbose=1)
         obs.append(z_op.qutip_op)
@@ -261,12 +265,14 @@ while(idx<batch_size):
         psi_plus=qutip.basis(2,0)
         psi_minus=qutip.sigmam()*qutip.basis(2,0)
         
+        p=np.random.uniform(0.,0.5,)
+    
         
         for i in range(l):
             if i==0:
-                psi0=psi_plus*np.sqrt(p[idx])+np.sqrt(1-p[idx])*psi_minus
+                psi0=psi_plus*np.sqrt(p)+np.sqrt(1-p)*psi_minus
             else:
-                psi0=qutip.tensor(psi0,psi_plus*np.sqrt(p[idx])+np.sqrt(1-p[idx])*psi_minus)
+                psi0=qutip.tensor(psi0,psi_plus*np.sqrt(p)+np.sqrt(1-p)*psi_minus)
 
     
     hamiltonian = [ham0.qutip_op + hamExtX.qutip_op]
@@ -291,11 +297,6 @@ while(idx<batch_size):
         #current_exp[:, r] = output.expect[l + r]
 
 
-    # compute the effective field
-    # # x_sp = np.sqrt(1 - z_exp**2) * np.cos(
-    # #     np.arcsin(-1 * (current_exp) / (2 * np.sqrt(1 - z_exp**2)))
-    # # )
-    
 
     # compute the effective field
     psi=np.zeros((2,l))
@@ -320,7 +321,7 @@ while(idx<batch_size):
 
     z_reconstruction=np.zeros((steps_tddft,l))
     h_eff_vector=np.zeros((steps_tddft,l))
-    for i in range(steps_tddft):
+    for i in trange(steps_tddft):
         psi_r=psi.copy()
         for f in range(1):
             x_ave=np.einsum('al,ab,bl->l',np.conj(psi_r),x_op,psi_r)
@@ -356,11 +357,11 @@ while(idx<batch_size):
         z_reconstruction[i]=np.einsum('al,ab,bl->l',np.conj(psi),z_op,psi)
 
     dz=np.average(np.abs(z_reconstruction-z_tddft))
-    print('dz=',dz,'idx=',idx)
+    print('dz=',dz,'idx=',idx,'p=',p)
     if diagnostic:
         dz=0.
     
-    if dz<0.01:
+    if dz<args.dz_threshold:
         # update the database
         h_eff_tot[idx,1:]=np.array([np.interp(time_final, time_tddft, h_eff_vector[:, i]) for i in range(h_eff_vector.shape[1])]).T
         h_tot[idx,1:]=np.array([np.interp(time_final, time, h[:, i]) for i in range(h.shape[1])]).T
