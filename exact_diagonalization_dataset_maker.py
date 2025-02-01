@@ -12,106 +12,127 @@ import os
 from datetime import datetime
 from scipy.sparse.linalg import eigsh,expm
 from scipy.interpolate import interp1d
+from src.tddft_methods.tddft_solver import Driving,second_derivative_formula
+import argparse
+
+parser = argparse.ArgumentParser()
 
 
+parser.add_argument(
+    "--diagnostic",
+    type=bool,
+    help="if activated, it disconnects every double check on the TDDFT reconstruction. It is used for debugging of the TDDFT method.",
+    action=argparse.BooleanOptionalAction,
+)
 
-def second_derivative_formula(arr, dt,derivative_formula:str):
-    """
-    Computes the second-order derivative using a 9-point finite difference stencil 
-    along the time axis of a 2D array.
+parser.add_argument(
+    "--initial_state_ground_state",
+    type=bool,
+    help="if activated, it constrains the initial state to the ground state of H(t=0).",
+    action=argparse.BooleanOptionalAction,
+)
 
-    Parameters:
-        arr (numpy.ndarray): Input 2D array with shape [time, space].
-        dt (float): Time step between successive data points.
+parser.add_argument(
+    "--pbc",
+    type=bool,
+    help="if activated, it sets the periodic boundary conditions",
+    action=argparse.BooleanOptionalAction,
+)
 
-    Returns:
-        numpy.ndarray: Second derivative array with the same shape as input.
-    """
+parser.add_argument(
+    "--condition_initial_state",
+    type=str,
+    help="it could be either 'fixed' -same initial state for each realization- or 'variable' ",
+    default="fixed",
+)
 
-    if derivative_formula=='9-points':
+parser.add_argument(
+    "--ndata",
+    type=int,
+    help="number of realization",
+    default=100,
+)
 
-        # Ensure time axis (axis=0) has at least 9 points
-        if arr.shape[0] < 9:
-            raise ValueError("Time dimension must have at least 9 points for a 9-point stencil.")
+parser.add_argument(
+    "--j",
+    type=float,
+    help="coupling of the nearest neighbour interaction",
+    default=-1,
+)
 
-        # 9-point stencil coefficients
-        coeffs = np.array([
-            -1/560,   # f(t-4h)
-        8/315,   # f(t-3h)
-            -1/5,     # f(t-2h)
-        8/5,     # f(t-h)
-            -205/72,  # f(t)
-        8/5,     # f(t+h)
-            -1/5,     # f(t+2h)
-        8/315,   # f(t+3h)
-            -1/560    # f(t+4h)
-        ])
+parser.add_argument(
+    "--omega",
+    type=float,
+    help="strength of the longitudinal field",
+    default=1,
+)
 
-        # Initialize output array
-        d2_arr = np.zeros_like(arr)
+parser.add_argument(
+    "--rate_mean",
+    type=float,
+    help="the mean value of the rate distribution for the sampling of the driving",
+    default=1.5,
+)
 
-        # Apply stencil only on valid indices (excluding boundaries)
-        for i in range(4, arr.shape[0] - 4):
-            d2_arr[i, :] = (
-                coeffs[0] * arr[i - 4, :] +
-                coeffs[1] * arr[i - 3, :] +
-                coeffs[2] * arr[i - 2, :] +
-                coeffs[3] * arr[i - 1, :] +
-                coeffs[4] * arr[i, :] +
-                coeffs[5] * arr[i + 1, :] +
-                coeffs[6] * arr[i + 2, :] +
-                coeffs[7] * arr[i + 3, :] +
-                coeffs[8] * arr[i + 4, :]
-            )
 
-        # Convert to second derivative by dividing by dt^2
-        d2_arr /= dt ** 2
+parser.add_argument(
+    "--rate_sigma",
+    type=float,
+    help="the standard deviation of the rate distribution for the sampling of the driving",
+    default=1.5,
+)
 
-        # Handle boundary conditions using np.gradient as fallback
-        d2_arr[:4, :] = np.gradient(np.gradient(arr, dt, axis=0), dt, axis=0)[:4, :]
-        d2_arr[-4:, :] = np.gradient(np.gradient(arr, dt, axis=0), dt, axis=0)[-4:, :]
+parser.add_argument(
+    "--amplitude_max",
+    type=float,
+    help="the maximum value of the amplitude of the random driving",
+    default=2.,
+)
 
-        return d2_arr
-    
-    if derivative_formula=='5-points':
+parser.add_argument(
+    "--amplitude_min",
+    type=float,
+    help="the minimum value of the amplitude of the random driving",
+    default=0.,
+)
 
-        # Ensure time axis (axis=0) has at least 5 points
-        if arr.shape[0] < 5:
-            raise ValueError("Time dimension must have at least 5 points for a 5-point stencil.")
+parser.add_argument(
+    "--derivative_formula",
+    type=str,
+    help="finite difference formula for computing the second-order time derivative in the TDDFT method. it can be either '3-points', '5-points', '7-points' or '9-points' ",
+    default='9-points',
+)
 
-        # 5-point stencil coefficients for the second derivative
-        coeffs = np.array([-1/12, 4/3, -5/2, 4/3, -1/12])
+parser.add_argument(
+    "--tf",
+    type=float,
+    help="final time of the time evolution",
+    default=20.,
+)
 
-        # Initialize output array
-        d2_arr = np.zeros_like(arr)
+parser.add_argument(
+    "--steps",
+    type=int,
+    help="number of time steps for the time evolution",
+    default=800,
+)
 
-        # Apply stencil only on valid indices (excluding boundaries)
-        for i in range(2, arr.shape[0] - 2):
-            d2_arr[i, :] = (
-                coeffs[0] * arr[i - 2, :] +
-                coeffs[1] * arr[i - 1, :] +
-                coeffs[2] * arr[i, :] +
-                coeffs[3] * arr[i + 1, :] +
-                coeffs[4] * arr[i + 2, :]
-            )
+parser.add_argument(
+    "--final_steps",
+    type=int,
+    help="number of time steps for the final realizations",
+    default=200,
+)
 
-        # Convert to second derivative by dividing by dt^2
-        d2_arr /= dt ** 2
+parser.add_argument(
+    "--l",
+    type=int,
+    help="length of the spin chain",
+    default=8,
+)
 
-        # Handle boundary conditions using np.gradient as fallback
-        d2_arr[:2, :] = np.gradient(np.gradient(arr, dt, axis=0), dt, axis=0)[:2, :]
-        d2_arr[-2:, :] = np.gradient(np.gradient(arr, dt, axis=0), dt, axis=0)[-2:, :]
+args=parser.parse_args()
 
-        return d2_arr
-        
-    if derivative_formula=='3-points':
-
-        current_arr=np.gradient(arr,dt,axis=0)
-        derivative_current_arr=np.gradient(current_arr,dt,axis=0)
-
-        return derivative_current_arr
-    
-    
 
 # Get the current date and time
 now = datetime.now()
@@ -121,64 +142,45 @@ now = datetime.now()
 formatted_date_time = now.strftime("%Y-%m-%d_%H-%M")
 
 
-class Driving:
-    def __init__(self, h: np.array, idx: int, dt: float) -> None:
-        self.h = h
-        # self.tf=tf
-        self.idx: int = idx
-        self.dt: float = dt
-
-    def field(self, t: float, args):
-        return self.h[int(t / self.dt), self.idx]
-
-    def get_the_field(
-        self,
-    ):
-        return self.h
-
-
 # hyperaparameters
 
 # if this is true, we are making datasets just to check the feasibility of the TDDFT method
-diagnostic=False
-derivative_formula='3-points' #it can be either 3-points,5-points,7-points,9-points
+diagnostic=args.diagnostic
+derivative_formula=args.derivative_formula #it can be either 3-points,5-points,7-points,9-points
 
 # parameters
 
 nbatch = 1
+batch_size =args.ndata
 
-batch_size =100
-
-initial_state_ground_state=True
-pbc=True
-condition_initial_state='fixed'
-# rates = [0.1, 0.5, 0.8, 1.0]
+initial_state_ground_state=args.initial_state_ground_state
+pbc=args.pbc
+condition_initial_state=args.condition_initial_state #'fixed'
 
 # j coupling
-j = -1
+j = args.j
 # omega auxiliary field
-omega = 1
+omega = args.omega
 
 
-rate_mean=1.5
-rate_sigma=1.5
+rate_mean=args.rate_mean
+rate_sigma=args.rate_sigma
 
-amplitude_max=2.
-amplitude_min=0.
+amplitude_max=args.amplitude_max
+amplitude_min=args.amplitude_min
 
-steps = 200
-tf = 20.0
+tf = args.tf
 
-steps_tddft=10*steps
-
-final_steps=200
+steps = args.steps
+steps_tddft=args.steps
+final_steps= args.final_steps
 
 
 time = np.linspace(0.0, tf, steps)
 time_tddft=np.linspace(0.0, tf, steps_tddft)
 time_final=np.linspace(0.0, tf, final_steps)
 
-l=8 #np.random.randint(2,10)
+l=args.l #np.random.randint(2,10)
 
 
 # we fix the seed (thi is to fix just for checking the algorithm)
@@ -202,10 +204,7 @@ p=np.random.uniform(0.,0.5,size=(batch_size))
 #hi = np.ones((time.shape[0], l))  # we fix the initial field to be 1J
 idx=0
 while(idx<batch_size):
-#for idx in trange(0, batch_size):
-    
-    # l=np.random.randint(3,9)
-    # ls.append(l)
+
     
     ham0 = SpinHamiltonian(
     direction_couplings=[("x", "x")],
@@ -310,10 +309,9 @@ while(idx<batch_size):
 
     
     # extrapolate the fields
-    f=interp1d(time,z_exp,axis=0)
-    z_tddft=f(time_tddft)
-    current_tddft=np.gradient(z_tddft,time_tddft,axis=0)
-    #current_derivative_tddft= np.gradient(current_tddft, time_tddft, axis=0)
+    #f=interp1d(time,z_exp,axis=0)
+    #z_tddft=f(time_tddft)
+    z_tddft=z_exp
     current_derivative_tddft=second_derivative_formula(z_tddft,dt=time_tddft[1]-time_tddft[0],derivative_formula=derivative_formula)
 
     
@@ -322,7 +320,7 @@ while(idx<batch_size):
 
     z_reconstruction=np.zeros((steps_tddft,l))
     h_eff_vector=np.zeros((steps_tddft,l))
-    for i in trange(steps_tddft):
+    for i in range(steps_tddft):
         psi_r=psi.copy()
         for f in range(1):
             x_ave=np.einsum('al,ab,bl->l',np.conj(psi_r),x_op,psi_r)
@@ -370,7 +368,6 @@ while(idx<batch_size):
         
         z_qutip_tot[idx,]=np.array([np.interp(time_final, time_tddft, z_tddft[:, i]) for i in range(z_tddft.shape[1])]).T
         z_auxiliary[idx,]= np.array([np.interp(time_final, time_tddft, z_reconstruction[:, i]) for i in range(z_reconstruction.shape[1])]).T
-        current_qutip_tot[idx,]=np.array([np.interp(time_final, time_tddft, current_tddft[:, i]) for i in range(current_tddft.shape[1])]).T
         current_derivative_tot[idx]=np.array([np.interp(time_final, time_tddft, current_derivative_tddft[:, i]) for i in range(current_derivative_tddft.shape[1])]).T
 
         idx=idx+1
@@ -382,7 +379,6 @@ while(idx<batch_size):
     if idx % 100 == 0:
         np.savez(
             f"data/dataset_h_eff/new_analysis_xxzx_model/dataset_{formatted_date_time}",
-            current=current_qutip_tot[:,:,l//2-1:l//2],
             z=z_qutip_tot[:,:,l//2-1:l//2],
             z_auxiliary=z_auxiliary[:,:,l//2-1:l//2],
             h_eff=h_eff_tot[:,:,l//2-1:l//2],
@@ -396,7 +392,6 @@ while(idx<batch_size):
 
 np.savez(
             f"data/dataset_h_eff/new_analysis_xxzx_model/dataset_{formatted_date_time}",
-            current=current_qutip_tot[:,:,l//2-1:l//2],
             z=z_qutip_tot[:,:,l//2-1:l//2],
             z_auxiliary=z_auxiliary[:,:,l//2-1:l//2],
             h_eff=h_eff_tot[:,:,:1],
