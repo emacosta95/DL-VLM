@@ -357,7 +357,12 @@ while(idx<batch_size):
         z_reconstruction[i]=np.einsum('al,ab,bl->l',np.conj(psi),z_op,psi)
 
     dz=np.average(np.abs(z_reconstruction-z_tddft))
-    print('dz=',dz,'idx=',idx,'p=',p)
+    if initial_state_ground_state:
+        
+        print('dz=',dz,'idx=',idx)
+    else:
+        print('dz=',dz,'idx=',idx,'p=',p)
+    
     if diagnostic:
         dz=0.
     
