@@ -67,20 +67,6 @@ parser.add_argument(
     default=1,
 )
 
-parser.add_argument(
-    "--rate_mean",
-    type=float,
-    help="the mean value of the rate distribution for the sampling of the driving",
-    default=1.5,
-)
-
-
-parser.add_argument(
-    "--rate_sigma",
-    type=float,
-    help="the standard deviation of the rate distribution for the sampling of the driving",
-    default=1.5,
-)
 
 parser.add_argument(
     "--amplitude_max",
@@ -170,8 +156,6 @@ j = args.j
 omega = args.omega
 
 
-rate_mean=args.rate_mean
-rate_sigma=args.rate_sigma
 
 amplitude_max=args.amplitude_max
 amplitude_min=args.amplitude_min
@@ -181,6 +165,10 @@ tf = args.tf
 steps = args.steps
 steps_tddft=args.steps
 final_steps= args.final_steps
+
+dt=tf/steps
+rate_min=0
+rate_max=1/(7*dt)
 
 
 time = np.linspace(0.0, tf, steps)
@@ -195,7 +183,7 @@ if diagnostic:
     np.random.seed(42)
 
 
-info=f'xx-z-x model with omega={omega:.1f}, coupling={j: .1f} external field with rate mean={rate_mean:.1f} and rate sigma={rate_sigma:.1f} amplitude max={amplitude_max:.1f} amplitude min={amplitude_min:.1f} tf={tf:.0f} steps={steps} l variable ndata={batch_size} initial state option={initial_state_ground_state} pbc={pbc}'
+info=f'xx-z-x model with omega={omega:.1f}, coupling={j: .1f} external field with rate min={rate_min:.1f} and rate max={rate_max:.1f} amplitude max={amplitude_max:.1f} amplitude min={amplitude_min:.1f} tf={tf:.0f} steps={steps} l variable ndata={batch_size} initial state option={initial_state_ground_state} pbc={pbc}'
 comments=condition_initial_state+f' Initial state ground state, with a diagonostic is {diagnostic} dataset. 2nd order time derivative with'+derivative_formula+' formula'
 z_qutip_tot = np.zeros(( batch_size , final_steps,l))
 z_auxiliary=np.zeros((batch_size,final_steps,l))
@@ -238,7 +226,7 @@ while(idx<batch_size):
 
 
     rate_cutoff = 10
-    rate=rate_mean+rate_sigma*np.random.normal(size=rate_cutoff)
+    rate=np.random.uniform(rate_min,rate_max,size=rate_cutoff)#rate_mean+rate_sigma*np.random.normal(size=rate_cutoff)
     delta = np.random.uniform(amplitude_min,amplitude_max,size=(rate_cutoff))
     
     h = (
