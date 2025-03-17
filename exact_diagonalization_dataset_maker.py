@@ -168,7 +168,7 @@ final_steps= args.final_steps
 
 dt=tf/steps
 rate_min=0
-rate_max=1/(7*dt)
+rate_max=4 #1/(7*dt)
 
 
 time = np.linspace(0.0, tf, steps)

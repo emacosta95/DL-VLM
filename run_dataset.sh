@@ -1,2 +1,2 @@
 
-nohup python exact_diagonalization_dataset_maker.py --steps=2400 --final_steps=200 --tf=20 --ndata=100 --pbc --condition_initial_state='fixed' --initial_state_ground_state  --derivative_formula='9-points'  > output_3.txt &
+nohup python exact_diagonalization_dataset_maker.py --diagnostic --steps=6000 --final_steps=600 --tf=60 --ndata=100 --pbc --condition_initial_state='fixed' --initial_state_ground_state  --derivative_formula='9-points'  > output_1.txt &
