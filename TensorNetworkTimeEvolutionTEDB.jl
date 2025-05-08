@@ -17,7 +17,7 @@ end
 
 # Parameters
 L = 30             # System size
-J = 1.0            # Ising interaction
+J = -1.0            # Ising interaction
 omega= 0.5           # Transverse field strength
 h0 = 0.       # Initial longitudinal field
 dt = 0.1          # Time step
@@ -53,41 +53,64 @@ state=["Up" for n in 1:L]
 psi=MPS(sites,state)
 
 
+# Build static two-site ZZ gates
+zz_gates = ITensor[]
+for j in 1:L-1
+    s1, s2 = sites[j], sites[j+1]
+    hj = J * op("Z", s1) * op("Z", s2)
+    G = exp(-1im * dt/2 * hj)
+    push!(zz_gates, G)
+end
+
+
 # Time evolution loop
 t = 0.0
 x_in_time=Float64[]
 
-ampo_0 = OpSum()
-for i in 1:L-1
-    global ampo_0 += -J, "Z", i, "Z", i+1
-end
-for i in 1:L
-    global ampo_0 += -omega, "Z", i
+# ampo_0 = OpSum()
+# for i in 1:L-1
+#     global ampo_0 += -J, "Z", i, "Z", i+1
+# end
+# for i in 1:L
+#     global ampo_0 += -omega, "Z", i
     
-end
+# end
 
-ampo_1 =OpSum()
-for i in 1:L
-    global ampo_1 += -1, "X", i
-end
+# ampo_1 =OpSum()
+# for i in 1:L
+#     global ampo_1 += -1, "X", i
+# end
 
-# Open the file once before the time loop
-open("data/itensors_calculation/x_ave_vs_time_sample_TEDB.txt", "w") do io
-    # Optionally, write a header
-    println(io, "# time x_ave")
 
-while t < tmax
-    h_current = h[Int(round(t/dt))]  # Compute h(t)
 
-    print("h_current=$h_current")
+while t < tmax -1e-10
+    h_t = h[Int(round(t/dt))+1]  # Compute h(t)
+
+    print("h_current=$h_t")
     # Update the Hamiltonian with new h(t)
-    ampo=ampo_0 + h_current*ampo_1
-    hamiltonian=MPO(ampo,sites)
+    # ampo=ampo_0 + h_current*ampo_1
+    # hamiltonian=MPO(ampo,sites)
     
-    exp_hamiltonian=exp(-1im*dt*hamiltonian)
+    # exp_hamiltonian=exp(-1im*dt*hamiltonian)
+    # Build dynamic single-site gates: omega * Z + h(t) * X
+    single_site_gates = ITensor[]
+    for j in 1:L
+        sj = sites[j]
+        ham_single = omega * op("Z", sj) + h_t * op("X", sj)
+        Gj = exp(-1im * dt * ham_single)
+        push!(single_site_gates, Gj)
+    end
 
+    # Apply single-site gates
+    for j in 1:L
+        global psi = apply(single_site_gates[j], psi; sites=j)
+    end
+
+    # Apply ZZ gates in TEBD order: (1,2), (2,3), ..., then reversed
+    global psi = apply(zz_gates, psi; cutoff=1e-8)
+    global psi = apply(reverse(zz_gates), psi; cutoff=1e-8)
     # Evolve the state using TDVP
-    global psi = apply(expH0, psi; maxdim=maxdim)
+    
  
     # Compute expectation values
     x_center = mean(expect(psi, "X"; site=L÷2))
@@ -96,10 +119,8 @@ while t < tmax
     push!(x_in_time,x_ave)
     print("\n")
     println(" t = $t, x_ave = $x_ave, x_center = $x_center")
-    println(io, "$t $x_ave")
     global t += dt
 end
-# Add a blank line at the end
-println(io)
 
-end
+
+npzwrite("data/itensors_calculation/data_TEDB_benchmark.npz", Dict("driving" => h, "time" => time, "z" => x_in_time))
