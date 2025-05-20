@@ -22,7 +22,7 @@ omega= 0.5           # Transverse field strength
 h0 = 0.       # Initial longitudinal field
 dt = 0.1          # Time step
 tmax = 10.0       # Total simulation time
-rate_max=2.
+rate_max=4.
 rate_min=0.
 amplitude_max=2.
 amplitude_min=0.
@@ -38,12 +38,14 @@ delta = rand(Uniform(amplitude_min, amplitude_max), rate_cutoff)
 
 time = range(0, step=dt, length=num_steps)
 # Compute h using broadcasting
-h= zeros(Int(tmax/dt))
-#print(h)
-for i in 1:rate_cutoff
-    global h =h+ delta[i] .* (cos.(π .+ time .* rate[i]) .+ 1) 
-end
-h=h/rate_cutoff
+# h= zeros(Int(tmax/dt))
+# #print(h)
+# for i in 1:rate_cutoff
+#     global h =h+ delta[i] .* (cos.(π .+ time .* rate[i]) .+ 1) 
+# end
+# h=h/rate_cutoff
+
+h = npzread("data/driver_for_julia.npy")
 print("h shape=$(size(h))")
 # Initialize the site indices for spin-1/2 systems
 sites = siteinds("S=1/2", L;conserve_qns=false)
