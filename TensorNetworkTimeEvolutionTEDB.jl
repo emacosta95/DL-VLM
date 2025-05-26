@@ -3,7 +3,7 @@ using ITensors
 using Random, Distributions, LinearAlgebra
 using ITensorTDVP
 using NPZ
-
+using Interpolations
 # Function to measure global magnetization
 function magnetization(psi, sites)
     x_sum = 0.0
