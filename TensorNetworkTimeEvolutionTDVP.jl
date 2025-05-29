@@ -68,9 +68,9 @@ end
 
 
 # Parameters
-L = 30             # System size
+L = 8             # System size
 J = -1.0            # Ising interaction
-omega= 0.5           # Transverse field strength
+omega= 1           # Transverse field strength
 h0 = 0.       # Initial longitudinal field
 dt = 0.05         # Time step
 tmax = 10.0       # Total simulation time
@@ -112,7 +112,7 @@ h = [itp[i] for i in range(1, stop=length(h), length=num_steps)]
 sites = siteinds("S=1/2", L;conserve_qns=false)
 
 # initial state
-state=["Up" for n in 1:L]
+state=["Dn" for n in 1:L]
 psi=MPS(sites,state)
 
 psi = Expand_D(psi, 5, siteinds(psi))
@@ -121,7 +121,7 @@ psi = Expand_D(psi, 5, siteinds(psi))
 sweeps = Sweeps(30)   # Number of sweeps
 maxdim!(sweeps,300)  # Increase max bond dimension
 cutoff!(sweeps, 1E-10)
-maxdim=400
+maxdim=20
 
 # Time evolution loop
 t = 0.0
@@ -129,16 +129,16 @@ x_in_time=Float64[]
 
 ampo_0 = OpSum()
 for i in 1:L-1
-    global ampo_0 += -J, "Z", i, "Z", i+1
+    global ampo_0 += J, "Z", i, "Z", i+1
 end
 for i in 1:L
-    global ampo_0 += -omega, "Z", i
+    global ampo_0 += omega, "Z", i
     
 end
 
 ampo_1 =OpSum()
 for i in 1:L
-    global ampo_1 += -1, "X", i
+    global ampo_1 += 1, "X", i
 end
 
 while t < tmax -1e-10
@@ -165,7 +165,7 @@ while t < tmax -1e-10
     global t += dt
 end
 
-npzwrite("data/itensors_calculation/data_TDVP_benchmark_400_bonddim.npz", Dict("driving" => h, "time" => time, "z" => x_in_time))
+npzwrite("data/itensors_calculation/data_TDVP_benchmark_20_bonddim_test_L_8.npz", Dict("driving" => h, "time" => time, "z" => x_in_time))
 
 
 

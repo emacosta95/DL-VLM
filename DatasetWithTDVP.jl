@@ -59,7 +59,7 @@ time = range(0, step=dt, length=num_steps)
 # Static Hamiltonian part
 ampo_0 = OpSum()
 for i in 1:L-1
-    global ampo_0 += J, "Z", i, "Z", i+1
+    global ampo_0 +=J, "Z", i, "Z", i+1
 end
 for i in 1:L
     global ampo_0 += omega, "Z", i
@@ -90,7 +90,7 @@ for sample_id in 1:ndata
 
     # Setup spin system
     sites = siteinds("S=1/2", L; conserve_qns=false)
-    state = ["Up" for _ in 1:L]
+    state = ["Dn" for _ in 1:L]
     psi = MPS(sites, state)
     psi = Expand_D(psi, 5, siteinds(psi))
 

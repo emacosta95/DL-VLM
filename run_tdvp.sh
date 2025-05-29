@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Number of parallel runs
-nruns=5
+nruns=10
 
 # Delay (in seconds) between starting each job
 delay=10
