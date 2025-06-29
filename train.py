@@ -9,7 +9,7 @@ import torch.nn as nn
 
 from src.training.models import (
     TDDFTCNNNoMemory,
-    LSTMTDDFT,
+    LSTMTDDFT,BiLSTMModel
 )
 
 from src.training.train_module import fit
@@ -317,14 +317,17 @@ def main(args):
         
 
         if args.model_type == "LSTM":
-            model = LSTMTDDFT(
+            print(input_size)
+            print(output_size)
+            model = BiLSTMModel(
                 input_size=input_size,
                 output_size=output_size,
                 hidden_size=hc[0],
                 num_layers=len(hc),
-                dropout=0,
                 loss=nn.MSELoss(),
             )
+            
+            
 
         
         elif args.model_type == "TDDFTCNN":

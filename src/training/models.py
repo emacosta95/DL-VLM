@@ -1428,7 +1428,53 @@ class LSTMTDDFT(nn.Module):
         return loss
 
 
+class BiLSTMModel(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=1, dropout=0.1, loss=None):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.bilstm = nn.LSTM(
+            input_size=input_size[0],         # Assuming input_size is a list or tuple
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=True,
+            dropout=dropout if num_layers > 1 else 0.0
+        )
+        # Additional fully connected layers
+        self.fc_layers = nn.Sequential(
+            nn.Linear(hidden_size * 2, hidden_size),  # reduce dimension
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size, output_size[0])
+        )
+        
+        self.loss = loss
+
+    def forward(self, x):
+        out, _ = self.bilstm(x)            # [B, T, hidden_size*2]
+        out = self.fc_layers(out)          # [B, T, output_size]
+        return out
+    
+    def train_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+
+    def valid_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x= self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+
+
 class ConvLSTMTDDFT(nn.Module):
+    
     def __init__(
         self,
         input_channels: int,
