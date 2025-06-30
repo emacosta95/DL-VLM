@@ -167,7 +167,7 @@ steps_tddft=args.steps
 final_steps= args.final_steps
 
 dt=tf/steps
-rate_min=2
+rate_min=0.
 rate_max=4 #1/(7*dt)
 
 
