@@ -5,7 +5,7 @@ from src.qutip_lab.qutip_class import SpinOperator, SpinHamiltonian, SteadyState
 from scipy.fft import fft, ifft
 from scipy.sparse.linalg import eigsh
 import qutip
-from qutip.metrics import fidelity
+from qutip.core.metrics import fidelity
 from typing import List
 from qutip import propagator
 import os
