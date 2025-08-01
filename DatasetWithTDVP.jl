@@ -37,7 +37,7 @@ function Expand_D(MPS, D, sites)
 end
 
 function magnetization(psi, sites)
-    sum(mean(expect(psi, "X"; site=i)) for i in 1:length(sites)) / length(sites)
+    sum(mean(expect(psi, "X"; sites=[i])) for i in 1:length(sites)) / length(sites)
 end
 
 # ----------------- Main Config --------------------
