@@ -86,7 +86,7 @@ x_in_time=Float64[]
 
 
 while t < tmax -1e-10
-    h_t = h[Int(round(t/dt))+1]  # Compute h(t)
+    h_t = h[Int(round(t/dt))]  # Compute h(t)
 
     print("h_current=$h_t")
     # Update the Hamiltonian with new h(t)

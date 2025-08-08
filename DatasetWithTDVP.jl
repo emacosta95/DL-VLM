@@ -1,5 +1,8 @@
 using ITensors, Random, Distributions, LinearAlgebra, ITensorTDVP, NPZ, Interpolations,Dates
 
+
+
+
 timestamp = Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
 
 function Expand_D(MPS, D, sites)
@@ -50,7 +53,7 @@ num_steps = Int(tmax/dt)
 rate_min, rate_max = 0.0, 4.0
 amplitude_min, amplitude_max = 0.0, 2.0
 rate_cutoff = 10
-ndata = 10  # <- You control how many samples
+ndata = 1  # <- You control how many samples
 
 time = range(0, step=dt, length=num_steps)
 
@@ -104,18 +107,23 @@ for sample_id in 1:ndata
     # TDVP loop
     t = 0.0
     x_in_time = Float64[]
+    step_counter = 0
     while t < tmax - 1e-10
         h_current = h[Int(round(t/dt)) + 1]
-        global ampo = ampo_0 + h_current * ampo_1
-        H = MPO(ampo, sites)
-        psi = tdvp(H, -im * dt, psi; maxdim=maxdim, cutoff=1e-8, outputlevel=1)
+        H = MPO(ampo_0 + h_current * ampo_1, sites)
+        psi = tdvp(H, -im * dt, psi; maxdim=maxdim, cutoff=1e-8, outputlevel=0)
         push!(x_in_time, magnetization(psi, sites))
         t += dt
+        step_counter += 1
+        if step_counter % 100 == 0
+            GC.gc()
+        end
     end
 
     # Store each sample
     push!(all_drivings, h)
     push!(all_zs, x_in_time)
+    print("tmax={$tmax}")
 end
 
 # Save to npz
