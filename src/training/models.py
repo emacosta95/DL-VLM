@@ -1473,6 +1473,71 @@ class BiLSTMModel(nn.Module):
         return loss
 
 
+class BiLSTMTransferModel(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=1, dropout=0.1, loss=None):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
+        # LSTM backbone
+        self.bilstm = nn.LSTM(
+            input_size=input_size[0],
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=True,
+            dropout=dropout if num_layers > 1 else 0.0
+        )
+
+        # Prediction head
+        self.fc_layers = nn.Sequential(
+            nn.Linear(hidden_size * 2, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size, output_size[0])
+        )
+
+        self.loss = loss
+
+    def forward(self, x):
+        out, _ = self.bilstm(x)     # [B, T, hidden_size*2]
+        out = self.fc_layers(out)   # [B, T, output_size]
+        return out
+
+    def train_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+
+    def valid_step(self, batch: Tuple, device: str):
+        x, y = batch
+        x = x.to(device=device, dtype=torch.double)
+        y = y.to(device=device, dtype=torch.double)
+        x = self.forward(x)
+        loss = self.loss(x, y)
+        return loss
+
+    # ---------------- Transfer learning helpers ---------------- #
+
+    def load_pretrained(self, path, freeze_backbone=True):
+        """Load pretrained weights and optionally freeze BiLSTM backbone."""
+        checkpoint = torch.load(path, map_location="cpu",weights_only=False)
+        state_dict = checkpoint.state_dict()
+        self.load_state_dict(state_dict, strict=False)  # allow missing keys if head differs
+        if freeze_backbone:
+            for param in self.bilstm.parameters():
+                param.requires_grad = False
+        print(f"Loaded pretrained weights from {path}. Backbone frozen={freeze_backbone}")
+
+    def unfreeze_backbone(self):
+        """Unfreeze LSTM backbone for fine-tuning."""
+        for param in self.bilstm.parameters():
+            param.requires_grad = True
+        print("Backbone unfrozen for fine-tuning.")
+
 class ConvLSTMTDDFT(nn.Module):
     
     def __init__(

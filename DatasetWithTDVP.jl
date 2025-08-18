@@ -48,12 +48,12 @@ L = 30
 J = -1.0
 omega = 1
 dt = 0.05
-tmax = 20.0
+tmax = 10.0
 num_steps = Int(tmax/dt)
 rate_min, rate_max = 0.0, 4.0
 amplitude_min, amplitude_max = 0.0, 2.0
 rate_cutoff = 10
-ndata = 1  # <- You control how many samples
+ndata = 30  # <- You control how many samples
 
 time = range(0, step=dt, length=num_steps)
 

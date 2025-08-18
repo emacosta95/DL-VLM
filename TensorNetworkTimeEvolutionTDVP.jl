@@ -69,7 +69,7 @@ J = 1.0            # Ising interaction
 omega= 1           # Transverse field strength
 h0 = 0.       # Initial longitudinal field
 dt = 0.05
-tmax = 30.0
+tmax = 10.0
 rate_max=2.
 rate_min=0.
 amplitude_max=2.
@@ -151,7 +151,7 @@ while t < tmax
     global t += dt
 end
 
-npzwrite("data/itensors_calculation/data_TDVP_test_bonddim_400.npz", Dict("driving" => h, "time" => time, "z" => x_in_time))
+npzwrite("data/itensors_calculation/data_TDVP_test_bonddim_30.npz", Dict("driving" => h, "time" => time, "z" => x_in_time))
 
 
 
